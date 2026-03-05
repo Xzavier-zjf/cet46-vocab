@@ -20,6 +20,10 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response.data,
   (error) => {
+    if (error?.code === 'ERR_CANCELED') {
+      return Promise.reject(error)
+    }
+
     const status = error?.response?.status
     const userStore = useUserStore()
     if (status === 401) {
