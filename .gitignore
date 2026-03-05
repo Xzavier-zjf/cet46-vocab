@@ -1,12 +1,23 @@
+﻿# .gitignore（完整版）
+
 # Backend
 cet46-vocab-backend/target/
+cet46-vocab-backend/src/main/resources/application-dev.yml
 cet46-vocab-backend/src/main/resources/application-prod.yml
 cet46-vocab-backend/run.log
 cet46-vocab-backend/run.err
-
-# IDE
-.idea/
+cet46-vocab-backend/logs/
 
 # Frontend
 cet46-vocab-frontend/node_modules/
 cet46-vocab-frontend/dist/
+
+# IDE / Editor
+.idea/
+.vscode/
+*.iml
+
+# OS / Temp
+.DS_Store
+Thumbs.db
+*.log
