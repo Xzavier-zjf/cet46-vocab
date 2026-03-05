@@ -6,3 +6,7 @@ cet46-vocab-backend/run.err
 
 # IDE
 .idea/
+
+# Frontend
+cet46-vocab-frontend/node_modules/
+cet46-vocab-frontend/dist/

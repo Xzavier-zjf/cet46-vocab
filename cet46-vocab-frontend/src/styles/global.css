@@ -1,0 +1,22 @@
+:root {
+  --color-primary: #1a2b4a;
+  --color-accent: #c9a84c;
+  --color-bg: #f5f7fa;
+  --color-text: #2c3e50;
+  --color-border: #e0e6ed;
+  --radius-card: 16px;
+  --shadow-card: 0 4px 24px rgba(26, 43, 74, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+}
