@@ -18,11 +18,11 @@ class LlmResponseParserTest {
     }
 
     @Test
-    void sentence_JSON解析成功() {
+    void sentenceJsonShouldParseSuccessfully() {
         // 测试意图：标准 JSON 能被正确解析为 sentence 结构
         String json = "{" +
                 "\"sentenceEn\":\"He abandoned the plan.\"," +
-                "\"sentenceZh\":\"他放弃了计划。\"," +
+                "\"sentenceZh\":\"\u4ed6\u653e\u5f03\u4e86\u8ba1\u5212\u3002\"," +
                 "\"difficulty\":\"CET-4\"" +
                 "}";
 
@@ -35,7 +35,7 @@ class LlmResponseParserTest {
     }
 
     @Test
-    void sentence_JSON格式错误时应走正则兜底() {
+    void brokenJsonShouldFallbackToRegex() {
         // 测试意图：JSON 非法时，仍可从键值片段中提取内容
         String broken = "prefix \"sentenceEn\":\"Fallback en\", \"sentenceZh\":\"Fallback zh\", \"difficulty\":\"CET-6\" suffix";
 
@@ -48,7 +48,7 @@ class LlmResponseParserTest {
     }
 
     @Test
-    void sentence_完全无法解析应返回null() {
+    void invalidContentShouldReturnNull() {
         // 测试意图：既不是合法 JSON 也无可提取字段时返回 null
         String invalid = "totally-invalid-content-without-any-expected-keys";
 

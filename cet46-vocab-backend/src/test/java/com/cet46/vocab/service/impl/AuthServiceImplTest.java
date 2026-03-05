@@ -50,7 +50,7 @@ class AuthServiceImplTest {
     private AuthServiceImpl authService;
 
     @Test
-    void 注册成功_应返回用户信息() {
+    void registerSuccessShouldReturnUserInfo() {
         // 测试意图：用户名不重复时可成功注册并返回基础信息
         RegisterRequest req = new RegisterRequest();
         req.setUsername("testuser");
@@ -77,7 +77,7 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 注册用户名重复_应抛出异常() {
+    void registerWithDuplicateUsernameShouldThrow() {
         // 测试意图：用户名已存在时注册应抛 IllegalArgumentException
         RegisterRequest req = new RegisterRequest();
         req.setUsername("exists");
@@ -89,7 +89,7 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 登录成功_应返回token并写入redis() {
+    void loginSuccessShouldReturnTokenAndWriteRedis() {
         // 测试意图：账号密码正确时返回登录信息，并把 token 写入 Redis
         LoginRequest req = new LoginRequest();
         req.setUsername("tom");
@@ -118,7 +118,7 @@ class AuthServiceImplTest {
     }
 
     @Test
-    void 登录密码错误_应抛出异常() {
+    void loginWrongPasswordShouldThrow() {
         // 测试意图：密码错误时应抛 UsernameNotFoundException
         LoginRequest req = new LoginRequest();
         req.setUsername("tom");
