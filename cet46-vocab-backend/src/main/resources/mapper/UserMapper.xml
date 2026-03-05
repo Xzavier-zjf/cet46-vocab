@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cet46.vocab.mapper.UserMapper">
+
+    <resultMap id="UserResultMap" type="com.cet46.vocab.entity.User">
+        <id property="id" column="id"/>
+        <result property="username" column="username"/>
+        <result property="password" column="password"/>
+        <result property="nickname" column="nickname"/>
+        <result property="avatar" column="avatar"/>
+        <result property="role" column="role"/>
+        <result property="llmStyle" column="llm_style"/>
+        <result property="dailyTarget" column="daily_target"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectByUsername" resultMap="UserResultMap">
+        SELECT id, username, password, nickname, avatar, role, llm_style, daily_target, created_at, updated_at
+        FROM user
+        WHERE username = #{username}
+        LIMIT 1
+    </select>
+</mapper>
