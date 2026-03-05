@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.cet46.vocab.mapper.UserWordProgressMapper">
+
+    <resultMap id="UserWordProgressResultMap" type="com.cet46.vocab.entity.UserWordProgress">
+        <id property="id" column="id"/>
+        <result property="userId" column="user_id"/>
+        <result property="wordId" column="word_id"/>
+        <result property="wordType" column="word_type"/>
+        <result property="easiness" column="easiness"/>
+        <result property="interval" column="interval"/>
+        <result property="repetition" column="repetition"/>
+        <result property="nextReviewDate" column="next_review_date"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <select id="selectTodayReview" resultMap="UserWordProgressResultMap">
+        SELECT id, user_id, word_id, word_type, easiness, interval, repetition,
+               next_review_date, created_at, updated_at
+        FROM user_word_progress
+        WHERE user_id = #{userId}
+          AND next_review_date &lt;= CURRENT_DATE
+        ORDER BY next_review_date ASC, id ASC
+    </select>
+</mapper>
