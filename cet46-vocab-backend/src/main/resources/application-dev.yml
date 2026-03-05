@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/cet46_vocab?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: 123456
+      database: 0
+      timeout: 3000ms
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+llm:
+  ollama:
+    base-url: http://localhost:11434
+    model: qwen3.5:4b-q4_K_M
+    timeout: 60s
+
+jwt:
+  secret: cet46_vocab_jwt_secret_2025
+  expire-days: 7
+
+cors:
+  allowed-origins:
+    - http://localhost:5173
+
+knife4j:
+  enabled: true

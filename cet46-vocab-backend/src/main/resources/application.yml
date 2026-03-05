@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: cet46-vocab-backend
+  profiles:
+    active: dev
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
