@@ -1,0 +1,127 @@
+<template>
+  <div class="flip-wrap" @click="$emit('flip')">
+    <div class="flip-inner" :class="{ flipped: isFlipped }">
+      <section class="card-face card-front">
+        <h2 class="word">{{ word?.english || '-' }}</h2>
+        <p class="phonetic">{{ word?.phonetic || '' }}</p>
+        <p class="hint">点击翻转查看释义</p>
+      </section>
+
+      <section class="card-face card-back">
+        <p class="chinese">{{ word?.chinese || '-' }}</p>
+        <p v-if="exampleSentence" class="example">{{ exampleSentence }}</p>
+      </section>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+
+defineEmits(['flip'])
+
+const props = defineProps({
+  word: { type: Object, default: () => ({}) },
+  isFlipped: { type: Boolean, default: false }
+})
+
+const exampleSentence = computed(() => {
+  return (
+    props.word?.sentenceEn ||
+    props.word?.llmContent?.sentence?.sentenceEn ||
+    ''
+  )
+})
+</script>
+
+<style scoped>
+.flip-wrap {
+  width: 100%;
+  max-width: 900px;
+  perspective: 1200px;
+  cursor: pointer;
+}
+
+.flip-inner {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  transform-style: preserve-3d;
+  transition: transform 0.4s ease;
+}
+
+.flip-inner.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  inset: 0;
+  padding: 42px 48px;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--shadow-card);
+  backface-visibility: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.card-front {
+  align-items: center;
+  text-align: center;
+}
+
+.word {
+  margin: 0;
+  color: #1A2B4A;
+  font-size: 32px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.phonetic {
+  margin: 14px 0 28px;
+  color: #8896A8;
+  font-size: 16px;
+}
+
+.hint {
+  margin: 0;
+  color: #A3AFBE;
+  font-size: 14px;
+}
+
+.card-back {
+  transform: rotateY(180deg);
+}
+
+.chinese {
+  margin: 0 0 14px;
+  color: #2C3E50;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.example {
+  margin: 0;
+  color: #4A6FA5;
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.8;
+}
+
+@media (max-width: 768px) {
+  .flip-inner {
+    min-height: 280px;
+  }
+
+  .card-face {
+    padding: 28px 22px;
+  }
+
+  .word {
+    font-size: 28px;
+  }
+}
+</style>
