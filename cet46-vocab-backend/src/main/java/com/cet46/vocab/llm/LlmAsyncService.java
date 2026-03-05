@@ -10,10 +10,13 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.ResourceAccessException;
 
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,6 +25,7 @@ public class LlmAsyncService {
 
     private static final Logger log = LoggerFactory.getLogger(LlmAsyncService.class);
     private static final String CACHE_PREFIX = "llm:content:";
+    private static final String TIMEOUT_FALLBACK_TEXT = "\u5185\u5bb9\u751f\u6210\u8d85\u65f6\uff0c\u5df2\u663e\u793a\u57fa\u7840\u91ca\u4e49";
 
     private final LlmCacheService llmCacheService;
     private final OllamaClient ollamaClient;
@@ -66,47 +70,66 @@ public class LlmAsyncService {
             String sentenceContent = llmCacheService.getCache(sentenceHash);
             String synonymContent = llmCacheService.getCache(synonymHash);
             String mnemonicContent = llmCacheService.getCache(mnemonicHash);
+            boolean timeoutOccurred = false;
 
-            // 2) 三个缓存都存在：直接解析并写库
             if (StringUtils.hasText(sentenceContent)
                     && StringUtils.hasText(synonymContent)
                     && StringUtils.hasText(mnemonicContent)) {
                 LlmResponseParser.SentenceResult sentenceResult = llmResponseParser.parseSentence(sentenceContent);
                 LlmResponseParser.SynonymResult synonymResult = llmResponseParser.parseSynonym(synonymContent);
                 LlmResponseParser.MnemonicResult mnemonicResult = llmResponseParser.parseMnemonic(mnemonicContent);
-                persistWordMeta(wordMeta, sentenceResult, synonymResult, mnemonicResult, sentenceHash);
+                persistWordMeta(wordMeta, sentenceResult, synonymResult, mnemonicResult, sentenceHash, false);
                 return;
             }
 
-            // 3) 缺失内容才调用 LLM
             if (!StringUtils.hasText(sentenceContent)) {
-                sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()));
+                try {
+                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()));
+                } catch (TimeoutException ex) {
+                    timeoutOccurred = true;
+                    log.warn("sentence generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
+                } catch (Exception ex) {
+                    log.error("sentence generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+                }
                 if (StringUtils.hasText(sentenceContent)) {
                     llmCacheService.setCache(sentenceHash, sentenceContent);
                 }
             }
+
             if (!StringUtils.hasText(synonymContent)) {
-                synonymContent = safeGenerate(buildPrompt(PromptType.SYNONYM, style, wordBase, wordMeta.getPos()));
+                try {
+                    synonymContent = safeGenerate(buildPrompt(PromptType.SYNONYM, style, wordBase, wordMeta.getPos()));
+                } catch (TimeoutException ex) {
+                    timeoutOccurred = true;
+                    log.warn("synonym generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
+                } catch (Exception ex) {
+                    log.error("synonym generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+                }
                 if (StringUtils.hasText(synonymContent)) {
                     llmCacheService.setCache(synonymHash, synonymContent);
                 }
             }
+
             if (!StringUtils.hasText(mnemonicContent)) {
-                mnemonicContent = safeGenerate(buildPrompt(PromptType.MNEMONIC, style, wordBase, wordMeta.getPos()));
+                try {
+                    mnemonicContent = safeGenerate(buildPrompt(PromptType.MNEMONIC, style, wordBase, wordMeta.getPos()));
+                } catch (TimeoutException ex) {
+                    timeoutOccurred = true;
+                    log.warn("mnemonic generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
+                } catch (Exception ex) {
+                    log.error("mnemonic generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+                }
                 if (StringUtils.hasText(mnemonicContent)) {
                     llmCacheService.setCache(mnemonicHash, mnemonicContent);
                 }
             }
 
-            // 4) 解析与状态判定
             LlmResponseParser.SentenceResult sentenceResult = llmResponseParser.parseSentence(defaultString(sentenceContent));
             LlmResponseParser.SynonymResult synonymResult = llmResponseParser.parseSynonym(defaultString(synonymContent));
             LlmResponseParser.MnemonicResult mnemonicResult = llmResponseParser.parseMnemonic(defaultString(mnemonicContent));
 
-            // 5) 6) 写库与缓存（缓存已在成功生成后写入）
-            persistWordMeta(wordMeta, sentenceResult, synonymResult, mnemonicResult, sentenceHash);
+            persistWordMeta(wordMeta, sentenceResult, synonymResult, mnemonicResult, sentenceHash, timeoutOccurred);
         } catch (Exception ex) {
-            // 7) 任何异常都不能崩溃异步线程
             log.error("generateWordContent failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
         }
     }
@@ -134,7 +157,8 @@ public class LlmAsyncService {
                                  LlmResponseParser.SentenceResult sentenceResult,
                                  LlmResponseParser.SynonymResult synonymResult,
                                  LlmResponseParser.MnemonicResult mnemonicResult,
-                                 String promptHash) {
+                                 String promptHash,
+                                 boolean timeoutOccurred) {
         boolean sentenceOk = sentenceResult != null && StringUtils.hasText(sentenceResult.sentenceEn());
         boolean synonymOk = synonymResult != null && synonymResult.synonyms() != null && !synonymResult.synonyms().isEmpty();
         boolean mnemonicOk = mnemonicResult != null && StringUtils.hasText(mnemonicResult.mnemonic());
@@ -148,8 +172,13 @@ public class LlmAsyncService {
             genStatus = "fallback";
         }
 
+        String sentenceZh = sentenceResult == null ? null : sentenceResult.sentenceZh();
+        if (timeoutOccurred && !StringUtils.hasText(sentenceZh)) {
+            sentenceZh = TIMEOUT_FALLBACK_TEXT;
+        }
+
         wordMeta.setSentenceEn(sentenceResult == null ? null : sentenceResult.sentenceEn());
-        wordMeta.setSentenceZh(sentenceResult == null ? null : sentenceResult.sentenceZh());
+        wordMeta.setSentenceZh(sentenceZh);
         wordMeta.setSentenceDifficulty(sentenceResult == null ? null : sentenceResult.difficulty());
         wordMeta.setSynonymsJson(toSynonymsJson(synonymResult));
         wordMeta.setMnemonic(mnemonicResult == null ? null : mnemonicResult.mnemonic());
@@ -167,6 +196,7 @@ public class LlmAsyncService {
     private void updateWordMetaToFallback(WordMeta wordMeta) {
         try {
             wordMeta.setGenStatus("fallback");
+            wordMeta.setSentenceZh(TIMEOUT_FALLBACK_TEXT);
             if (wordMeta.getId() == null) {
                 wordMetaMapper.insert(wordMeta);
             } else {
@@ -200,15 +230,17 @@ public class LlmAsyncService {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private String safeGenerate(String prompt) {
+    private String safeGenerate(String prompt) throws TimeoutException {
         if (!StringUtils.hasText(prompt)) {
             return null;
         }
         try {
             return ollamaClient.generate(prompt);
         } catch (Exception ex) {
-            log.error("ollama generate failed", ex);
-            return null;
+            if (isTimeoutException(ex)) {
+                throw new TimeoutException("ollama request timeout");
+            }
+            throw ex;
         }
     }
 
@@ -281,6 +313,19 @@ public class LlmAsyncService {
         return value == null ? "" : value;
     }
 
+    private boolean isTimeoutException(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof TimeoutException
+                    || current instanceof SocketTimeoutException
+                    || current instanceof ResourceAccessException) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
     private record WordBase(String english, String phonetic, String chinese) {
     }
 
@@ -290,3 +335,4 @@ public class LlmAsyncService {
         MNEMONIC
     }
 }
+

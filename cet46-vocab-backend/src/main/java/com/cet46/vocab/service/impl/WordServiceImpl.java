@@ -19,6 +19,9 @@ import com.cet46.vocab.service.WordService;
 import com.cet46.vocab.utils.PosParser;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -29,10 +32,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.UUID;
 
 @Service
 public class WordServiceImpl implements WordService {
+
+    private static final Logger log = LoggerFactory.getLogger(WordServiceImpl.class);
+    private static final String WORD_DETAIL_CACHE_PREFIX = "word:detail:";
 
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
@@ -41,6 +48,7 @@ public class WordServiceImpl implements WordService {
     private final LlmAsyncService llmAsyncService;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public WordServiceImpl(Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
@@ -48,7 +56,8 @@ public class WordServiceImpl implements WordService {
                            UserMapper userMapper,
                            LlmAsyncService llmAsyncService,
                            JdbcTemplate jdbcTemplate,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           RedisTemplate<String, Object> redisTemplate) {
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.wordMetaMapper = wordMetaMapper;
@@ -56,6 +65,7 @@ public class WordServiceImpl implements WordService {
         this.llmAsyncService = llmAsyncService;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -97,6 +107,16 @@ public class WordServiceImpl implements WordService {
 
     @Override
     public WordDetailResponse getWordDetail(Long wordId, String wordType, Long userId) {
+        String cacheKey = buildWordDetailCacheKey(wordType, wordId);
+        Object cached = redisTemplate.opsForValue().get(cacheKey);
+        if (cached != null) {
+            try {
+                return objectMapper.convertValue(cached, WordDetailResponse.class);
+            } catch (IllegalArgumentException ex) {
+                log.warn("failed to parse word detail cache, fallback to db, key={}", cacheKey, ex);
+            }
+        }
+
         String style = getUserStyle(userId);
         WordBase wordBase = loadWordBase(wordId, wordType);
         if (wordBase == null) {
@@ -115,7 +135,7 @@ public class WordServiceImpl implements WordService {
         WordDetailResponse.LlmContent llmContent = buildLlmContent(style, wordMeta);
         WordDetailResponse.Progress progress = queryProgress(userId, wordId, wordType);
 
-        return WordDetailResponse.builder()
+        WordDetailResponse response = WordDetailResponse.builder()
                 .wordId(wordId)
                 .wordType(wordType)
                 .english(wordBase.english)
@@ -125,6 +145,8 @@ public class WordServiceImpl implements WordService {
                 .llmContent(llmContent)
                 .progress(progress)
                 .build();
+        redisTemplate.opsForValue().set(cacheKey, response, 1, TimeUnit.HOURS);
+        return response;
     }
 
     @Override
@@ -330,5 +352,9 @@ public class WordServiceImpl implements WordService {
     }
 
     private record WordBase(String english, String sent, String chinese) {
+    }
+
+    private String buildWordDetailCacheKey(String wordType, Long wordId) {
+        return WORD_DETAIL_CACHE_PREFIX + wordType + ":" + wordId;
     }
 }

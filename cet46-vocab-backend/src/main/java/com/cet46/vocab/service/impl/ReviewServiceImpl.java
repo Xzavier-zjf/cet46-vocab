@@ -13,6 +13,7 @@ import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.ReviewLogMapper;
 import com.cet46.vocab.mapper.UserWordProgressMapper;
 import com.cet46.vocab.service.ReviewService;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,19 +26,24 @@ import java.util.List;
 @Service
 public class ReviewServiceImpl implements ReviewService {
 
+    private static final String DASHBOARD_OVERVIEW_CACHE_PREFIX = "dashboard:overview:";
+
     private final UserWordProgressMapper userWordProgressMapper;
     private final ReviewLogMapper reviewLogMapper;
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
+    private final RedisTemplate<String, Object> redisTemplate;
 
     public ReviewServiceImpl(UserWordProgressMapper userWordProgressMapper,
                              ReviewLogMapper reviewLogMapper,
                              Cet4WordMapper cet4WordMapper,
-                             Cet6WordMapper cet6WordMapper) {
+                             Cet6WordMapper cet6WordMapper,
+                             RedisTemplate<String, Object> redisTemplate) {
         this.userWordProgressMapper = userWordProgressMapper;
         this.reviewLogMapper = reviewLogMapper;
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
+        this.redisTemplate = redisTemplate;
     }
 
     @Override
@@ -74,7 +80,7 @@ public class ReviewServiceImpl implements ReviewService {
                         .last("LIMIT 1")
         );
         if (progress == null) {
-            throw new RuntimeException("学习进度不存在");
+            throw new RuntimeException("learning progress not found");
         }
 
         double easiness = progress.getEasiness() == null ? 2.5 : progress.getEasiness();
@@ -98,6 +104,8 @@ public class ReviewServiceImpl implements ReviewService {
                 .reviewedAt(LocalDateTime.now())
                 .build();
         reviewLogMapper.insert(reviewLog);
+
+        redisTemplate.delete(DASHBOARD_OVERVIEW_CACHE_PREFIX + userId);
 
         return new SM2UpdateResult(result.interval(), result.easiness(), result.nextReviewDate());
     }

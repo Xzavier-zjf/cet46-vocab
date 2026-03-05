@@ -9,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.stream.Collectors;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -16,8 +18,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public Result<Void> handleMethodArgumentNotValidException(MethodArgumentNotValidException ex) {
-        FieldError fieldError = ex.getBindingResult().getFieldError();
-        String message = fieldError != null ? fieldError.getDefaultMessage() : ResultCode.BAD_REQUEST.getMessage();
+        String message = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(this::buildFieldErrorMessage)
+                .distinct()
+                .collect(Collectors.joining("; "));
+        if (message.isBlank()) {
+            message = ResultCode.BAD_REQUEST.getMessage();
+        }
         return Result.fail(ResultCode.BAD_REQUEST.getCode(), message);
     }
 
@@ -41,5 +50,11 @@ public class GlobalExceptionHandler {
     public Result<Void> handleException(Exception ex) {
         log.error("Unhandled exception caught", ex);
         return Result.fail(ResultCode.INTERNAL_ERROR);
+    }
+
+    private String buildFieldErrorMessage(FieldError fieldError) {
+        String field = fieldError.getField();
+        String err = fieldError.getDefaultMessage() == null ? "invalid value" : fieldError.getDefaultMessage();
+        return field + ": " + err;
     }
 }
