@@ -8,7 +8,7 @@
         :key="item.path"
         :to="resolveMenuPath(item.path)"
         class="menu-item"
-        :class="{ active: isActive(item.path) }"
+        :class="{ active: isActive(item) }"
       >
         <el-icon class="menu-icon">
           <component :is="item.icon" />
@@ -27,7 +27,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { House, Collection, Reading, Refresh, Edit, TrendCharts, User, Upload } from '@element-plus/icons-vue'
+import { House, Collection, Reading, Refresh, Edit, TrendCharts, User, Upload, UserFilled } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 
@@ -37,7 +37,15 @@ const userStore = useUserStore()
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
 
 const menuItems = computed(() => {
-  const items = [
+  if (userStore.role === 'ADMIN') {
+    return [
+      { label: '词库导入', path: '/admin', icon: Upload, exact: true },
+      { label: '用户管理', path: '/admin/users', icon: UserFilled, exact: false },
+      { label: '我的资料', path: '/profile', icon: User, exact: false }
+    ]
+  }
+
+  return [
     { label: '学习仪表盘', path: '/dashboard', icon: House },
     { label: '今日学习', path: '/learn', icon: Reading },
     { label: '词库浏览', path: '/words', icon: Collection },
@@ -46,13 +54,14 @@ const menuItems = computed(() => {
     { label: '学习统计', path: '/stats', icon: TrendCharts },
     { label: '我的资料', path: '/profile', icon: User }
   ]
-  if (userStore.role === 'ADMIN') {
-    items.push({ label: '词库导入', path: '/admin', icon: Upload })
-  }
-  return items
 })
 
-const isActive = (path) => route.path === path || route.path.startsWith(`${path}/`)
+const isActive = (item) => {
+  if (item.exact) {
+    return route.path === item.path
+  }
+  return route.path === item.path || route.path.startsWith(`${item.path}/`)
+}
 
 const resolveMenuPath = (path) => {
   try {
@@ -164,4 +173,3 @@ const handleLogout = async () => {
   background: rgba(201, 168, 76, 0.15);
 }
 </style>
-

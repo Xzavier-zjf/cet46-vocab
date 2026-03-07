@@ -72,7 +72,7 @@
         </div>
       </div>
 
-      <div class="row">
+      <div class="row" v-if="!isAdmin">
         <span class="label">每日目标</span>
         <el-input-number v-model="form.dailyTarget" :min="1" :max="100" />
       </div>
@@ -157,6 +157,7 @@ const pwdForm = reactive({
 })
 
 const avatarText = computed(() => (form.nickname || userStore.nickname || '我').slice(0, 1))
+const isAdmin = computed(() => userStore.role === 'ADMIN')
 
 const syncFromStore = () => {
   form.nickname = userStore.nickname || ''
@@ -214,11 +215,14 @@ const saveAll = async () => {
       profileForm.append('avatar', avatarFile.value)
     }
     await request.post('/user/profile', profileForm)
-    await request.put('/user/preference', {
+    const preferencePayload = {
       llmStyle: form.llmStyle,
-      llmProvider: form.llmProvider,
-      dailyTarget: form.dailyTarget
-    })
+      llmProvider: form.llmProvider
+    }
+    if (!isAdmin.value) {
+      preferencePayload.dailyTarget = form.dailyTarget
+    }
+    await request.put('/user/preference', preferencePayload)
     await userStore.fetchUserInfo()
     syncFromStore()
     avatarFile.value = null
