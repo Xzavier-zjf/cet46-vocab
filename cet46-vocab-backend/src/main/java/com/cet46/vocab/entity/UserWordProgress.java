@@ -1,6 +1,7 @@
 package com.cet46.vocab.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -20,6 +21,7 @@ public class UserWordProgress {
     private Long wordId;
     private String wordType;
     private Double easiness;
+    @TableField("`interval`")
     private Integer interval;
     private Integer repetition;
     private LocalDate nextReviewDate;

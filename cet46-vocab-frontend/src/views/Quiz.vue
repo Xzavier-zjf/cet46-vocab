@@ -6,32 +6,48 @@
       <div class="setup-row">
         <span class="label">题目数量</span>
         <el-radio-group v-model="setup.count">
-          <el-radio-button :label="10">10</el-radio-button>
-          <el-radio-button :label="20">20</el-radio-button>
-          <el-radio-button :label="30">30</el-radio-button>
+          <el-radio-button :value="10">10</el-radio-button>
+          <el-radio-button :value="20">20</el-radio-button>
+          <el-radio-button :value="30">30</el-radio-button>
         </el-radio-group>
       </div>
 
       <div class="setup-row">
         <span class="label">模式</span>
         <el-radio-group v-model="setup.mode">
-          <el-radio-button label="choice">选择题</el-radio-button>
-          <el-radio-button label="fill">填空题</el-radio-button>
+          <el-radio-button value="choice">选择题</el-radio-button>
+          <el-radio-button value="fill">填空题</el-radio-button>
         </el-radio-group>
       </div>
 
       <div class="setup-row">
         <span class="label">词库</span>
         <el-radio-group v-model="setup.wordType">
-          <el-radio-button label="cet4">CET4</el-radio-button>
-          <el-radio-button label="cet6">CET6</el-radio-button>
-          <el-radio-button label="mixed">混合</el-radio-button>
+          <el-radio-button value="cet4">CET4</el-radio-button>
+          <el-radio-button value="cet6">CET6</el-radio-button>
+          <el-radio-button value="mixed">混合</el-radio-button>
         </el-radio-group>
       </div>
 
       <el-button class="start-btn" :loading="state === 'loading'" @click="startQuiz">
         开始测验
       </el-button>
+      <div class="history-card">
+        <div class="history-title">测验历史</div>
+        <div v-if="quizHistory.length" class="history-list">
+          <div v-for="item in quizHistory" :key="item.id" class="history-item">
+            <div class="history-line">
+              <span class="history-time">{{ formatHistoryTime(item.finishedAt) }}</span>
+              <span class="history-score">{{ item.correct }}/{{ item.total }}</span>
+            </div>
+            <div class="history-meta">
+              {{ item.wordType.toUpperCase() }} / {{ item.mode === 'choice' ? '选择题' : '填空题' }} / {{ item.count }}题
+              <span class="history-wrong">错题 {{ item.wrongCount }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="history-empty">暂无历史记录</div>
+      </div>
     </section>
 
     <section v-else-if="state === 'loading'" class="state-card center">
@@ -40,7 +56,10 @@
     </section>
 
     <section v-else-if="state === 'question' || state === 'answered'" class="question-card">
-      <div class="progress">第 {{ currentIndex + 1 }} / 共 {{ questions.length }} 题</div>
+      <div class="question-header">
+        <div class="progress">第 {{ currentIndex + 1 }} / 共 {{ questions.length }} 题</div>
+        <el-button text class="back-setup-btn" @click="backToSetup">返回设置</el-button>
+      </div>
 
       <h3 class="word">{{ currentQuestion?.english || '-' }}</h3>
       <p class="phonetic">{{ currentQuestion?.phonetic || '' }}</p>
@@ -107,13 +126,21 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { generateQuiz, submitQuiz } from '@/api/quiz'
+import { useUserStore } from '@/stores/user'
+import { getToken } from '@/utils/token'
 
 const router = useRouter()
+const userStore = useUserStore()
+
+const QUIZ_SESSION_STORAGE_PREFIX = 'quiz:session:'
+const QUIZ_HISTORY_STORAGE_PREFIX = 'quiz:history:'
+const QUIZ_HISTORY_LIMIT = 20
+const allowedStates = new Set(['setup', 'loading', 'question', 'answered', 'submitting', 'result'])
 
 const state = ref('setup')
 const setup = reactive({
@@ -130,6 +157,7 @@ const questionStartAt = ref(0)
 
 const selectedAnswer = ref('')
 const fillAnswer = ref('')
+const quizHistory = ref([])
 
 const result = reactive({
   total: 0,
@@ -162,6 +190,135 @@ const startQuestionTimer = () => {
 
 const calcTimeSpent = () => Math.max(Date.now() - questionStartAt.value, 0)
 
+const getQuizSessionStorageKey = () => {
+  const token = getToken() || ''
+  return `${QUIZ_SESSION_STORAGE_PREFIX}${userStore.userId || token || 'anonymous'}`
+}
+
+const getQuizHistoryStorageKey = () => {
+  const token = getToken() || ''
+  return `${QUIZ_HISTORY_STORAGE_PREFIX}${userStore.userId || token || 'anonymous'}`
+}
+
+const resetRuntime = () => {
+  quizId.value = ''
+  questions.value = []
+  currentIndex.value = 0
+  answers.value = []
+  selectedAnswer.value = ''
+  fillAnswer.value = ''
+  questionStartAt.value = 0
+  result.total = 0
+  result.correct = 0
+  result.wrongWords = []
+}
+
+const snapshot = () => ({
+  state: state.value,
+  setup: { ...setup },
+  quizId: quizId.value,
+  questions: questions.value,
+  currentIndex: currentIndex.value,
+  answers: answers.value,
+  questionStartAt: questionStartAt.value,
+  selectedAnswer: selectedAnswer.value,
+  fillAnswer: fillAnswer.value,
+  result: { ...result }
+})
+
+const persistSession = () => {
+  localStorage.setItem(getQuizSessionStorageKey(), JSON.stringify(snapshot()))
+}
+
+const persistHistory = () => {
+  localStorage.setItem(getQuizHistoryStorageKey(), JSON.stringify(quizHistory.value))
+}
+
+const restoreHistory = () => {
+  const raw = localStorage.getItem(getQuizHistoryStorageKey())
+  if (!raw) {
+    quizHistory.value = []
+    return
+  }
+  try {
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) {
+      quizHistory.value = parsed
+        .filter((item) => item && item.id)
+        .slice(0, QUIZ_HISTORY_LIMIT)
+    } else {
+      quizHistory.value = []
+    }
+  } catch {
+    quizHistory.value = []
+    localStorage.removeItem(getQuizHistoryStorageKey())
+  }
+}
+
+const formatHistoryTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '-'
+  return date.toLocaleString()
+}
+
+const pushHistoryRecord = () => {
+  const record = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    finishedAt: new Date().toISOString(),
+    wordType: setup.wordType,
+    mode: setup.mode,
+    count: questions.value.length,
+    total: result.total,
+    correct: result.correct,
+    wrongCount: Math.max(result.total - result.correct, 0)
+  }
+  quizHistory.value = [record, ...quizHistory.value].slice(0, QUIZ_HISTORY_LIMIT)
+  persistHistory()
+}
+
+const normalizeRestoredState = () => {
+  if (!questions.value.length && ['question', 'answered', 'submitting'].includes(state.value)) {
+    state.value = 'setup'
+    resetRuntime()
+  }
+  if (currentIndex.value < 0 || currentIndex.value >= questions.value.length) {
+    currentIndex.value = 0
+  }
+}
+
+const restoreSession = () => {
+  const raw = localStorage.getItem(getQuizSessionStorageKey())
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw)
+    state.value = allowedStates.has(parsed?.state) ? parsed.state : 'setup'
+
+    setup.count = Number(parsed?.setup?.count || 10)
+    setup.mode = parsed?.setup?.mode || 'choice'
+    setup.wordType = parsed?.setup?.wordType || 'cet4'
+
+    quizId.value = parsed?.quizId || ''
+    questions.value = Array.isArray(parsed?.questions) ? parsed.questions : []
+    currentIndex.value = Number(parsed?.currentIndex || 0)
+    answers.value = Array.isArray(parsed?.answers) ? parsed.answers : []
+    questionStartAt.value = Number(parsed?.questionStartAt || 0)
+
+    selectedAnswer.value = parsed?.selectedAnswer || ''
+    fillAnswer.value = parsed?.fillAnswer || ''
+
+    result.total = Number(parsed?.result?.total || 0)
+    result.correct = Number(parsed?.result?.correct || 0)
+    result.wrongWords = Array.isArray(parsed?.result?.wrongWords) ? parsed.result.wrongWords : []
+
+    normalizeRestoredState()
+  } catch {
+    state.value = 'setup'
+    resetRuntime()
+    localStorage.removeItem(getQuizSessionStorageKey())
+  }
+}
+
 const startQuiz = async () => {
   state.value = 'loading'
   try {
@@ -170,23 +327,29 @@ const startQuiz = async () => {
       mode: setup.mode,
       wordType: setup.wordType
     })
+
     quizId.value = res?.data?.quizId || ''
     questions.value = Array.isArray(res?.data?.questions) ? res.data.questions : []
     currentIndex.value = 0
     answers.value = []
     selectedAnswer.value = ''
     fillAnswer.value = ''
+    result.total = 0
+    result.correct = 0
+    result.wrongWords = []
 
     if (!questions.value.length) {
       ElMessage.warning('暂无可用题目，请稍后重试')
       state.value = 'setup'
+      resetRuntime()
       return
     }
 
     state.value = 'question'
     startQuestionTimer()
-  } catch (error) {
+  } catch {
     state.value = 'setup'
+    resetRuntime()
   }
 }
 
@@ -236,31 +399,37 @@ const nextQuestion = async () => {
     result.total = Number(res?.data?.total || questions.value.length)
     result.correct = Number(res?.data?.correct || 0)
     result.wrongWords = Array.isArray(res?.data?.wrongWords) ? res.data.wrongWords : []
+    pushHistoryRecord()
     state.value = 'result'
-  } catch (error) {
-    state.value = 'result'
+  } catch {
     result.total = questions.value.length
     result.correct = 0
     result.wrongWords = []
+    pushHistoryRecord()
+    state.value = 'result'
   }
 }
 
 const resetToSetup = () => {
   state.value = 'setup'
-  quizId.value = ''
-  questions.value = []
-  currentIndex.value = 0
-  answers.value = []
-  selectedAnswer.value = ''
-  fillAnswer.value = ''
-  result.total = 0
-  result.correct = 0
-  result.wrongWords = []
+  resetRuntime()
+}
+
+const backToSetup = () => {
+  state.value = 'setup'
+  resetRuntime()
 }
 
 const goHome = () => {
   router.push('/dashboard')
 }
+
+watch(snapshot, persistSession, { deep: true })
+
+onMounted(() => {
+  restoreHistory()
+  restoreSession()
+})
 </script>
 
 <style scoped>
@@ -283,7 +452,7 @@ const goHome = () => {
 .setup-card h2,
 .result-card h2 {
   margin: 0 0 18px;
-  color: #1A2B4A;
+  color: #1a2b4a;
 }
 
 .setup-row {
@@ -300,9 +469,63 @@ const goHome = () => {
 
 .start-btn {
   margin-top: 10px;
-  background: #1A2B4A;
+  background: #1a2b4a;
   color: #fff;
-  border-color: #1A2B4A;
+  border-color: #1a2b4a;
+}
+
+.history-card {
+  margin-top: 16px;
+  border-top: 1px dashed #e5eaf2;
+  padding-top: 12px;
+}
+
+.history-title {
+  font-weight: 700;
+  color: #1a2b4a;
+  margin-bottom: 8px;
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.history-item {
+  border: 1px solid #e3e9f2;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.history-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #4a5f79;
+  font-size: 13px;
+}
+
+.history-score {
+  font-weight: 700;
+  color: #1a2b4a;
+}
+
+.history-meta {
+  margin-top: 4px;
+  color: #6c7b8f;
+  font-size: 12px;
+}
+
+.history-wrong {
+  margin-left: 10px;
+}
+
+.history-empty {
+  color: #6c7b8f;
+  font-size: 13px;
 }
 
 .center {
@@ -316,17 +539,28 @@ const goHome = () => {
 
 .loading-icon {
   font-size: 32px;
-  color: #1A2B4A;
+  color: #1a2b4a;
+}
+
+.question-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .progress {
-  color: #8896A8;
+  color: #8896a8;
   font-size: 13px;
+}
+
+.back-setup-btn {
+  color: #6d7f95;
 }
 
 .word {
   margin: 8px 0 6px;
-  color: #1A2B4A;
+  color: #1a2b4a;
   font-size: 34px;
 }
 
@@ -349,7 +583,7 @@ const goHome = () => {
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
-  color: #2C3E50;
+  color: #2c3e50;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -381,8 +615,8 @@ const goHome = () => {
 }
 
 .fill-submit {
-  border-color: #1A2B4A;
-  color: #1A2B4A;
+  border-color: #1a2b4a;
+  color: #1a2b4a;
 }
 
 .analysis {
@@ -393,12 +627,12 @@ const goHome = () => {
 
 .analysis h4 {
   margin: 0 0 8px;
-  color: #1A2B4A;
+  color: #1a2b4a;
 }
 
 .analysis p {
   margin: 0;
-  color: #4A6FA5;
+  color: #4a6fa5;
   line-height: 1.7;
 }
 
@@ -409,7 +643,7 @@ const goHome = () => {
 .score {
   margin: 0 0 16px;
   font-size: 28px;
-  color: #1A2B4A;
+  color: #1a2b4a;
   font-weight: 700;
 }
 
@@ -437,9 +671,9 @@ const goHome = () => {
 }
 
 .again-btn {
-  background: #1A2B4A;
+  background: #1a2b4a;
   color: #fff;
-  border-color: #1A2B4A;
+  border-color: #1a2b4a;
 }
 
 @media (max-width: 768px) {

@@ -14,9 +14,9 @@ public class AsyncConfig {
     @Bean("llmTaskExecutor")
     public Executor llmTaskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(5);
-        executor.setQueueCapacity(50);
+        executor.setCorePoolSize(4);
+        executor.setMaxPoolSize(8);
+        executor.setQueueCapacity(100);
         executor.setThreadNamePrefix("llm-async-");
         executor.initialize();
         return executor;

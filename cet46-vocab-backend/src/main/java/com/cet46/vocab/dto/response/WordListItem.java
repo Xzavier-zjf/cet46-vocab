@@ -17,4 +17,5 @@ public class WordListItem {
     private String chinese;
     private String pos;
     private Boolean isLearning;
+    private String progressStatus;
 }

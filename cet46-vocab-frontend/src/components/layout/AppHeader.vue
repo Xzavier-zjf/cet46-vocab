@@ -4,7 +4,7 @@
       <span class="nickname">{{ displayName }}</span>
       <el-dropdown trigger="click" @command="onCommand">
         <div class="user-trigger">
-          <el-avatar :size="32">{{ avatarText }}</el-avatar>
+          <el-avatar :size="32" :src="userStore.avatar || undefined">{{ avatarText }}</el-avatar>
           <el-icon><ArrowDown /></el-icon>
         </div>
         <template #dropdown>

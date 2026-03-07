@@ -32,6 +32,8 @@ public class WordDetailResponse {
         private Sentence sentence;
         private List<SynonymItem> synonyms;
         private Mnemonic mnemonic;
+        private String smartExplain;
+        private String explainStatus;
     }
 
     @Data
@@ -69,6 +71,7 @@ public class WordDetailResponse {
     @AllArgsConstructor
     public static class Progress {
         private Boolean isLearning;
+        private String status;
         private Double easiness;
         private Integer interval;
         private Integer repetition;

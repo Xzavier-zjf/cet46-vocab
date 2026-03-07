@@ -13,7 +13,11 @@ import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.ReviewLogMapper;
 import com.cet46.vocab.mapper.UserWordProgressMapper;
 import com.cet46.vocab.service.ReviewService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -27,28 +31,33 @@ import java.util.List;
 public class ReviewServiceImpl implements ReviewService {
 
     private static final String DASHBOARD_OVERVIEW_CACHE_PREFIX = "dashboard:overview:";
+    private static final Logger log = LoggerFactory.getLogger(ReviewServiceImpl.class);
+    private static final int IMMEDIATE_REVIEW_LIMIT = 50;
 
     private final UserWordProgressMapper userWordProgressMapper;
     private final ReviewLogMapper reviewLogMapper;
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
     public ReviewServiceImpl(UserWordProgressMapper userWordProgressMapper,
                              ReviewLogMapper reviewLogMapper,
                              Cet4WordMapper cet4WordMapper,
                              Cet6WordMapper cet6WordMapper,
-                             RedisTemplate<String, Object> redisTemplate) {
+                             RedisTemplate<String, Object> redisTemplate,
+                             JdbcTemplate jdbcTemplate) {
         this.userWordProgressMapper = userWordProgressMapper;
         this.reviewLogMapper = reviewLogMapper;
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.redisTemplate = redisTemplate;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
     public List<ReviewCardResponse> getTodayReviewList(Long userId) {
-        List<UserWordProgress> progresses = userWordProgressMapper.selectTodayReview(userId);
+        List<UserWordProgress> progresses = loadReviewQueue(userId);
         List<ReviewCardResponse> list = new ArrayList<>();
         for (UserWordProgress progress : progresses) {
             WordBase wordBase = loadWordBase(progress.getWordId(), progress.getWordType());
@@ -93,7 +102,14 @@ public class ReviewServiceImpl implements ReviewService {
         progress.setInterval(result.interval());
         progress.setRepetition(result.repetition());
         progress.setNextReviewDate(result.nextReviewDate());
-        userWordProgressMapper.updateById(progress);
+        jdbcTemplate.update(
+                "UPDATE user_word_progress SET easiness = ?, `interval` = ?, repetition = ?, next_review_date = ? WHERE id = ?",
+                progress.getEasiness(),
+                progress.getInterval(),
+                progress.getRepetition(),
+                progress.getNextReviewDate(),
+                progress.getId()
+        );
 
         ReviewLog reviewLog = ReviewLog.builder()
                 .userId(userId)
@@ -112,16 +128,22 @@ public class ReviewServiceImpl implements ReviewService {
 
     @Override
     public SessionProgress getSessionProgress(Long userId) {
-        int totalToday = userWordProgressMapper.selectTodayReview(userId).size();
+        int totalToday = loadReviewQueue(userId).size();
         LocalDateTime start = LocalDate.now().atStartOfDay();
         LocalDateTime end = start.plusDays(1);
 
-        Long reviewedLong = reviewLogMapper.selectCount(
-                new LambdaQueryWrapper<ReviewLog>()
-                        .eq(ReviewLog::getUserId, userId)
-                        .ge(ReviewLog::getReviewedAt, start)
-                        .lt(ReviewLog::getReviewedAt, end)
-        );
+        Long reviewedLong;
+        try {
+            reviewedLong = reviewLogMapper.selectCount(
+                    new LambdaQueryWrapper<ReviewLog>()
+                            .eq(ReviewLog::getUserId, userId)
+                            .ge(ReviewLog::getReviewedAt, start)
+                            .lt(ReviewLog::getReviewedAt, end)
+            );
+        } catch (DataAccessException ex) {
+            log.warn("failed to query reviewed count for user {}", userId, ex);
+            return new SessionProgress(totalToday, 0, totalToday);
+        }
         int reviewed = reviewedLong == null ? 0 : reviewedLong.intValue();
         int remaining = Math.max(totalToday - reviewed, 0);
         return new SessionProgress(totalToday, reviewed, remaining);
@@ -146,6 +168,19 @@ public class ReviewServiceImpl implements ReviewService {
             return new WordBase(word.getEnglish(), word.getSent(), word.getChinese());
         }
         return null;
+    }
+
+    private List<UserWordProgress> loadReviewQueue(Long userId) {
+        try {
+            List<UserWordProgress> dueToday = userWordProgressMapper.selectTodayReview(userId);
+            if (!dueToday.isEmpty()) {
+                return dueToday;
+            }
+            return userWordProgressMapper.selectImmediateReview(userId, IMMEDIATE_REVIEW_LIMIT);
+        } catch (DataAccessException ex) {
+            log.warn("failed to load review queue for user {}", userId, ex);
+            return List.of();
+        }
     }
 
     private record WordBase(String english, String phonetic, String chinese) {

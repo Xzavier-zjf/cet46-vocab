@@ -10,6 +10,7 @@ import com.cet46.vocab.entity.Cet6Word;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmCacheService;
+import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
@@ -77,7 +78,7 @@ public class AdminController {
         List<Long> candidateWordIds = findCandidateWordIds(wordType, style, limit);
 
         for (Long wordId : candidateWordIds) {
-            llmAsyncService.generateWordContent(wordId, wordType, style);
+            llmAsyncService.generateWordContent(wordId, wordType, style, LlmProvider.LOCAL);
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -137,7 +138,7 @@ public class AdminController {
         }
 
         clearCache(req.getWordId(), wordType, style, promptType);
-        llmAsyncService.generateWordContent(req.getWordId(), wordType, style);
+        llmAsyncService.regenerateWordContent(req.getWordId(), wordType, style, LlmProvider.LOCAL);
 
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", "regenerate_task_" + UUID.randomUUID());

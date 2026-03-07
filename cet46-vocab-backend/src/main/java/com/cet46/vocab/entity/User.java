@@ -23,10 +23,12 @@ public class User {
     private String avatar;
     private String role;
     private String llmStyle;
+    private String llmProvider;
     private Integer dailyTarget;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 
+    @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }

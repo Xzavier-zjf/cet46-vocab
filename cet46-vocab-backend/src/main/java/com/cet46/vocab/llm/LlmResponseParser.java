@@ -3,6 +3,7 @@ package com.cet46.vocab.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +14,8 @@ import java.util.regex.Pattern;
 public class LlmResponseParser {
 
     private static final Pattern QUOTE_PATTERN = Pattern.compile("\"%s\"\\s*:\\s*\"([^\"]*)\"");
+    private static final Pattern FENCE_JSON_PATTERN = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)\\s*```", Pattern.CASE_INSENSITIVE);
+    private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{[\\s\\S]*}");
     private static final Pattern ARRAY_ITEM_PATTERN = Pattern.compile(
             "\\{\\s*\"synonym\"\\s*:\\s*\"([^\"]*)\"\\s*,\\s*\"difference\"\\s*:\\s*\"([^\"]*)\"\\s*,\\s*\"example\"\\s*:\\s*\"([^\"]*)\"\\s*\\}"
     );
@@ -49,10 +52,15 @@ public class LlmResponseParser {
 
     private SentenceResult parseSentenceByJson(String content) {
         try {
-            JsonNode node = objectMapper.readTree(content);
-            String sentenceEn = getText(node, "sentence_en", "sentenceEn");
-            String sentenceZh = getText(node, "sentence_zh", "sentenceZh");
-            String difficulty = getText(node, "difficulty");
+            JsonNode node = parseJsonNode(content);
+            if (node == null) {
+                return null;
+            }
+            String sentenceEn = getText(node,
+                    "sentence_en", "sentenceEn", "sentence", "example_sentence", "sentenceEnglish", "english_sentence");
+            String sentenceZh = getText(node,
+                    "sentence_zh", "sentenceZh", "sentence_cn", "sentenceCn", "translation", "sentenceChinese", "chinese_sentence");
+            String difficulty = getText(node, "difficulty", "level");
             if (sentenceEn == null && sentenceZh == null && difficulty == null) {
                 return null;
             }
@@ -64,18 +72,22 @@ public class LlmResponseParser {
 
     private SynonymResult parseSynonymByJson(String content) {
         try {
-            JsonNode node = objectMapper.readTree(content);
-            JsonNode arrayNode = node.get("synonyms");
+            JsonNode node = parseJsonNode(content);
+            if (node == null) {
+                return null;
+            }
+            JsonNode arrayNode = getArrayNode(node, "synonyms", "similar_words", "alternatives");
             if (arrayNode == null || !arrayNode.isArray()) {
                 return null;
             }
             List<SynonymItem> items = new ArrayList<>();
             for (JsonNode item : arrayNode) {
-                items.add(new SynonymItem(
-                        getText(item, "synonym"),
-                        getText(item, "difference"),
-                        getText(item, "example")
-                ));
+                String synonym = getText(item, "synonym", "word", "term");
+                String difference = getText(item, "difference", "usage", "note", "explanation");
+                String example = getText(item, "example", "sentence", "example_sentence");
+                if (synonym != null || difference != null || example != null) {
+                    items.add(new SynonymItem(synonym, difference, example));
+                }
             }
             if (items.isEmpty()) {
                 return null;
@@ -88,9 +100,12 @@ public class LlmResponseParser {
 
     private MnemonicResult parseMnemonicByJson(String content) {
         try {
-            JsonNode node = objectMapper.readTree(content);
-            String mnemonic = getText(node, "mnemonic");
-            String rootAnalysis = getText(node, "root_analysis", "rootAnalysis");
+            JsonNode node = parseJsonNode(content);
+            if (node == null) {
+                return null;
+            }
+            String mnemonic = getText(node, "mnemonic", "memory_tip", "memoryTip", "association", "memory");
+            String rootAnalysis = getText(node, "root_analysis", "rootAnalysis", "etymology", "root");
             if (mnemonic == null && rootAnalysis == null) {
                 return null;
             }
@@ -146,11 +161,73 @@ public class LlmResponseParser {
         return matcher.find() ? matcher.group(1) : null;
     }
 
+    private JsonNode parseJsonNode(String content) {
+        if (!StringUtils.hasText(content)) {
+            return null;
+        }
+        String trimmed = content.trim();
+        List<String> candidates = new ArrayList<>();
+        candidates.add(trimmed);
+
+        Matcher fenceMatcher = FENCE_JSON_PATTERN.matcher(trimmed);
+        if (fenceMatcher.find()) {
+            candidates.add(fenceMatcher.group(1).trim());
+        }
+
+        Matcher objectMatcher = JSON_OBJECT_PATTERN.matcher(trimmed);
+        if (objectMatcher.find()) {
+            candidates.add(objectMatcher.group());
+        }
+
+        for (String candidate : candidates) {
+            try {
+                JsonNode root = objectMapper.readTree(candidate);
+                if (root != null && root.isObject()) {
+                    return unwrapEnvelope(root);
+                }
+            } catch (Exception ignore) {
+                // Try next candidate.
+            }
+        }
+        return null;
+    }
+
+    private JsonNode unwrapEnvelope(JsonNode root) {
+        JsonNode[] nodes = new JsonNode[]{
+                root.get("data"),
+                root.get("result"),
+                root.get("output"),
+                root.get("content")
+        };
+        for (JsonNode node : nodes) {
+            if (node != null && node.isObject()) {
+                return node;
+            }
+        }
+        return root;
+    }
+
+    private JsonNode getArrayNode(JsonNode node, String... keys) {
+        for (String key : keys) {
+            JsonNode value = node.get(key);
+            if (value != null && value.isArray()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private String getText(JsonNode node, String... keys) {
+        if (node == null) {
+            return null;
+        }
         for (String key : keys) {
             JsonNode value = node.get(key);
             if (value != null && !value.isNull()) {
-                return value.asText();
+                String text = value.asText();
+                if (StringUtils.hasText(text) && !"null".equalsIgnoreCase(text.trim())) {
+                    return text;
+                }
             }
         }
         return null;

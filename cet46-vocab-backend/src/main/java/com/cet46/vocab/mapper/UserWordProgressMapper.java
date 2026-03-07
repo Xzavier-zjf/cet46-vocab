@@ -10,4 +10,6 @@ import java.util.List;
 @Mapper
 public interface UserWordProgressMapper extends BaseMapper<UserWordProgress> {
     List<UserWordProgress> selectTodayReview(@Param("userId") Long userId);
+
+    List<UserWordProgress> selectImmediateReview(@Param("userId") Long userId, @Param("limit") Integer limit);
 }

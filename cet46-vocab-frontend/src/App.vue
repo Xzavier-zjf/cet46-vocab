@@ -26,9 +26,10 @@ const isFullPageRoute = computed(() => fullPageRoutes.includes(route.path))
 
 <style scoped>
 .app-layout {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   background: var(--color-bg);
+  overflow: hidden;
 }
 
 .main-layout {
@@ -36,11 +37,14 @@ const isFullPageRoute = computed(() => fullPageRoutes.includes(route.path))
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .page-content {
   flex: 1;
   padding: 24px;
   min-width: 0;
+  overflow: auto;
 }
 </style>

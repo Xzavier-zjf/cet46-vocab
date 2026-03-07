@@ -19,6 +19,21 @@
       </article>
 
       <el-button class="submit-btn" :loading="submitting" @click="submitTest">完成并进入首页</el-button>
+
+      <section class="provider-section">
+        <h3>AI来源</h3>
+        <div class="provider-grid">
+          <button
+            v-for="item in providers"
+            :key="item.value"
+            class="option-btn"
+            :class="{ active: llmProvider === item.value }"
+            @click="llmProvider = item.value"
+          >
+            {{ item.text }}
+          </button>
+        </div>
+      </section>
     </section>
   </section>
 </template>
@@ -33,6 +48,7 @@ import { useUserStore } from '@/stores/user'
 const router = useRouter()
 const userStore = useUserStore()
 const submitting = ref(false)
+const llmProvider = ref(userStore.llmProvider || 'local')
 
 const questions = [
   {
@@ -62,6 +78,10 @@ const questions = [
 ]
 
 const answers = reactive(['', '', ''])
+const providers = [
+  { value: 'local', text: '本地模型 (Ollama)' },
+  { value: 'cloud', text: '云端API' }
+]
 
 const calcStyle = () => {
   const count = { academic: 0, story: 0, sarcastic: 0 }
@@ -92,9 +112,11 @@ const submitTest = async () => {
   try {
     await request.put('/user/preference', {
       llmStyle: style,
+      llmProvider: llmProvider.value,
       dailyTarget
     })
     userStore.llmStyle = style
+    userStore.llmProvider = llmProvider.value
     userStore.dailyTarget = dailyTarget
     ElMessage.success('学习风格已设置')
     router.push('/dashboard')
@@ -169,8 +191,30 @@ const submitTest = async () => {
   color: #fff;
 }
 
+.provider-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #e4eaf2;
+}
+
+.provider-section h3 {
+  margin: 0 0 10px;
+  color: #2C3E50;
+  font-size: 16px;
+}
+
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 @media (max-width: 900px) {
   .options {
+    grid-template-columns: 1fr;
+  }
+
+  .provider-grid {
     grid-template-columns: 1fr;
   }
 }

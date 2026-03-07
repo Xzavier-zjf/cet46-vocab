@@ -4,6 +4,7 @@ import com.cet46.vocab.dto.request.LoginRequest;
 import com.cet46.vocab.dto.request.RegisterRequest;
 import com.cet46.vocab.dto.response.UserInfoResponse;
 import com.cet46.vocab.entity.User;
+import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.service.AuthService;
 import com.cet46.vocab.utils.JwtUtils;
@@ -50,6 +51,7 @@ public class AuthServiceImpl implements AuthService {
                 .password(passwordEncoder.encode(req.getPassword()))
                 .nickname(nickname)
                 .role("USER")
+                .llmProvider(LlmProvider.LOCAL)
                 .dailyTarget(DEFAULT_DAILY_TARGET)
                 .build();
 
@@ -61,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
                 .nickname(user.getNickname())
                 .avatar(user.getAvatar())
                 .llmStyle(user.getLlmStyle())
+                .llmProvider(LlmProvider.normalize(user.getLlmProvider()))
                 .dailyTarget(user.getDailyTarget())
                 .totalDays(0)
                 .streakDays(0)
@@ -85,6 +88,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("nickname", user.getNickname());
         result.put("role", user.getRole());
         result.put("llmStyle", user.getLlmStyle());
+        result.put("llmProvider", LlmProvider.normalize(user.getLlmProvider()));
         return result;
     }
 

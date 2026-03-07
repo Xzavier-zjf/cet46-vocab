@@ -6,16 +6,22 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 
+import java.net.ConnectException;
 import java.net.SocketTimeoutException;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,31 +35,63 @@ public class LlmAsyncService {
 
     private final LlmCacheService llmCacheService;
     private final OllamaClient ollamaClient;
+    private final CloudLlmClient cloudLlmClient;
     private final LlmResponseParser llmResponseParser;
     private final WordMetaMapper wordMetaMapper;
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
+    private final Executor llmTaskExecutor;
 
     public LlmAsyncService(LlmCacheService llmCacheService,
                            OllamaClient ollamaClient,
+                           CloudLlmClient cloudLlmClient,
                            LlmResponseParser llmResponseParser,
                            WordMetaMapper wordMetaMapper,
                            JdbcTemplate jdbcTemplate,
-                           ObjectMapper objectMapper) {
+                           ObjectMapper objectMapper,
+                           @Qualifier("llmTaskExecutor") Executor llmTaskExecutor) {
         this.llmCacheService = llmCacheService;
         this.ollamaClient = ollamaClient;
+        this.cloudLlmClient = cloudLlmClient;
         this.llmResponseParser = llmResponseParser;
         this.wordMetaMapper = wordMetaMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
+        this.llmTaskExecutor = llmTaskExecutor;
     }
 
     @Async("llmTaskExecutor")
-    public void generateWordContent(Long wordId, String wordType, String style) {
+    public void generateWordContent(Long wordId, String wordType, String style, String provider) {
+        doGenerateWordContent(wordId, wordType, style, provider, false);
+    }
+
+    @Async("llmTaskExecutor")
+    public void regenerateWordContent(Long wordId, String wordType, String style, String provider) {
+        doGenerateWordContent(wordId, wordType, style, provider, true);
+    }
+
+    @Async("llmTaskExecutor")
+    public void generateWordExplainContent(Long wordId, String wordType, String style, String provider) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, false);
+    }
+
+    @Async("llmTaskExecutor")
+    public void regenerateWordExplainContent(Long wordId, String wordType, String style, String provider) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, true);
+    }
+
+    private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, boolean forceRefresh) {
+        String normalizedProvider = LlmProvider.normalize(provider);
         try {
             String sentenceHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style);
             String synonymHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "synonym", style);
             String mnemonicHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "mnemonic", style);
+
+            if (forceRefresh) {
+                llmCacheService.deleteCache(sentenceHash);
+                llmCacheService.deleteCache(synonymHash);
+                llmCacheService.deleteCache(mnemonicHash);
+            }
 
             WordMeta wordMeta = ensurePendingWordMeta(wordId, wordType, style, sentenceHash);
             WordBase wordBase = loadWordBase(wordId, wordType);
@@ -84,68 +122,153 @@ public class LlmAsyncService {
 
             if (!StringUtils.hasText(sentenceContent)) {
                 try {
-                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()));
-                } catch (TimeoutException ex) {
-                    timeoutOccurred = true;
-                    log.warn("sentence generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
+                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()), normalizedProvider);
                 } catch (Exception ex) {
-                    log.error("sentence generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+                    timeoutOccurred = logGenerationFailure("sentence", wordId, wordType, style, normalizedProvider, ex) || timeoutOccurred;
                 }
                 if (StringUtils.hasText(sentenceContent)) {
                     llmCacheService.setCache(sentenceHash, sentenceContent);
                 }
             }
 
-            if (!StringUtils.hasText(synonymContent)) {
-                try {
-                    synonymContent = safeGenerate(buildPrompt(PromptType.SYNONYM, style, wordBase, wordMeta.getPos()));
-                } catch (TimeoutException ex) {
-                    timeoutOccurred = true;
-                    log.warn("synonym generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
-                } catch (Exception ex) {
-                    log.error("synonym generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
-                }
-                if (StringUtils.hasText(synonymContent)) {
-                    llmCacheService.setCache(synonymHash, synonymContent);
-                }
-            }
-
-            if (!StringUtils.hasText(mnemonicContent)) {
-                try {
-                    mnemonicContent = safeGenerate(buildPrompt(PromptType.MNEMONIC, style, wordBase, wordMeta.getPos()));
-                } catch (TimeoutException ex) {
-                    timeoutOccurred = true;
-                    log.warn("mnemonic generation timeout, wordId={}, wordType={}, style={}", wordId, wordType, style);
-                } catch (Exception ex) {
-                    log.error("mnemonic generation failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
-                }
-                if (StringUtils.hasText(mnemonicContent)) {
-                    llmCacheService.setCache(mnemonicHash, mnemonicContent);
-                }
-            }
-
             LlmResponseParser.SentenceResult sentenceResult = llmResponseParser.parseSentence(defaultString(sentenceContent));
+            sentenceResult = ensureSentenceResult(sentenceResult, sentenceContent);
+            if (hasSentenceContent(sentenceResult)) {
+                persistPendingSentence(wordMeta, sentenceResult, sentenceHash);
+            }
+
+            GenerationAttempt synonymAttempt;
+            GenerationAttempt mnemonicAttempt;
+            if (LlmProvider.LOCAL.equals(normalizedProvider)) {
+                // Local models are often single-worker; sequential calls reduce timeout/failure rate.
+                synonymAttempt = generateSync(
+                        synonymContent, "synonym", PromptType.SYNONYM,
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                mnemonicAttempt = generateSync(
+                        mnemonicContent, "mnemonic", PromptType.MNEMONIC,
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+            } else {
+                CompletableFuture<GenerationAttempt> synonymFuture = generateAsync(
+                        synonymContent, "synonym", PromptType.SYNONYM,
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                CompletableFuture<GenerationAttempt> mnemonicFuture = generateAsync(
+                        mnemonicContent, "mnemonic", PromptType.MNEMONIC,
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                synonymAttempt = synonymFuture.join();
+                mnemonicAttempt = mnemonicFuture.join();
+            }
+
+            timeoutOccurred = timeoutOccurred || synonymAttempt.timeoutOccurred() || mnemonicAttempt.timeoutOccurred();
+            if (!StringUtils.hasText(synonymContent) && StringUtils.hasText(synonymAttempt.content())) {
+                synonymContent = synonymAttempt.content();
+                llmCacheService.setCache(synonymHash, synonymContent);
+            }
+            if (!StringUtils.hasText(mnemonicContent) && StringUtils.hasText(mnemonicAttempt.content())) {
+                mnemonicContent = mnemonicAttempt.content();
+                llmCacheService.setCache(mnemonicHash, mnemonicContent);
+            }
+
             LlmResponseParser.SynonymResult synonymResult = llmResponseParser.parseSynonym(defaultString(synonymContent));
             LlmResponseParser.MnemonicResult mnemonicResult = llmResponseParser.parseMnemonic(defaultString(mnemonicContent));
+            sentenceResult = ensureSentenceResult(sentenceResult, sentenceContent);
+            synonymResult = ensureSynonymResult(synonymResult, synonymContent);
+            mnemonicResult = ensureMnemonicResult(mnemonicResult, mnemonicContent);
+            if (shouldTrySupplement(synonymResult, mnemonicResult)) {
+                try {
+                    String supplement = safeGenerate(buildSupplementPrompt(wordBase, wordMeta.getPos()), normalizedProvider);
+                    LlmResponseParser.SynonymResult supplementSynonym = llmResponseParser.parseSynonym(defaultString(supplement));
+                    LlmResponseParser.MnemonicResult supplementMnemonic = llmResponseParser.parseMnemonic(defaultString(supplement));
+                    supplementSynonym = ensureSynonymResult(supplementSynonym, supplement);
+                    supplementMnemonic = ensureMnemonicResult(supplementMnemonic, supplement);
+                    if (!hasSynonymContent(synonymResult) && hasSynonymContent(supplementSynonym)) {
+                        synonymResult = supplementSynonym;
+                    }
+                    if (!hasMnemonicContent(mnemonicResult) && hasMnemonicContent(supplementMnemonic)) {
+                        mnemonicResult = supplementMnemonic;
+                    }
+                } catch (Exception ex) {
+                    timeoutOccurred = logGenerationFailure("supplement", wordId, wordType, style, normalizedProvider, ex) || timeoutOccurred;
+                }
+            }
 
             persistWordMeta(wordMeta, sentenceResult, synonymResult, mnemonicResult, sentenceHash, timeoutOccurred);
         } catch (Exception ex) {
-            log.error("generateWordContent failed, wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+            log.error("generateWordContent failed, wordId={}, wordType={}, style={}, provider={}", wordId, wordType, style, normalizedProvider, ex);
+            reconcileStatusAfterFailure(wordId, wordType, style);
+        }
+    }
+
+    private void doGenerateWordExplainContent(Long wordId, String wordType, String style, String provider, boolean forceRefresh) {
+        String normalizedProvider = LlmProvider.normalize(provider);
+        String explainHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "explain", style);
+        try {
+            if (forceRefresh) {
+                llmCacheService.deleteCache(explainHash);
+            }
+            WordBase wordBase = loadWordBase(wordId, wordType);
+            if (wordBase == null) {
+                return;
+            }
+            WordMeta wordMeta = ensureWordMetaForExplain(wordId, wordType, style, wordBase.english);
+            if (wordMeta == null) {
+                return;
+            }
+            wordMeta.setAiExplainStatus("pending");
+            wordMetaMapper.updateById(wordMeta);
+
+            String explain = llmCacheService.getCache(explainHash);
+            if (!StringUtils.hasText(explain)) {
+                String prompt = buildExplainPrompt(wordBase);
+                explain = safeGenerate(prompt, normalizedProvider);
+                if (StringUtils.hasText(explain)) {
+                    llmCacheService.setCache(explainHash, explain);
+                }
+            }
+
+            if (StringUtils.hasText(explain)) {
+                wordMeta.setAiExplain(toPlainText(explain, 800));
+                wordMeta.setAiExplainStatus("full");
+            } else {
+                wordMeta.setAiExplainStatus("fallback");
+            }
+            wordMetaMapper.updateById(wordMeta);
+        } catch (Exception ex) {
+            logGenerationFailure("explain", wordId, wordType, style, normalizedProvider, ex);
+            try {
+                WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+                if (wordMeta != null) {
+                    if (!StringUtils.hasText(wordMeta.getAiExplain())) {
+                        wordMeta.setAiExplainStatus("fallback");
+                    } else {
+                        wordMeta.setAiExplainStatus("full");
+                    }
+                    wordMetaMapper.updateById(wordMeta);
+                }
+            } catch (Exception inner) {
+                log.warn("update explain status failed, wordId={}, wordType={}, style={}",
+                        wordId, wordType, style, inner);
+            }
         }
     }
 
     private WordMeta ensurePendingWordMeta(Long wordId, String wordType, String style, String promptHash) {
+        WordBase wordBase = loadWordBase(wordId, wordType);
+        String english = wordBase == null ? "" : defaultString(wordBase.english);
         WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
         if (wordMeta == null) {
             wordMeta = WordMeta.builder()
                     .wordId(wordId)
                     .wordType(wordType)
+                    .word(english)
                     .style(style)
                     .genStatus("pending")
                     .promptHash(promptHash)
                     .build();
             wordMetaMapper.insert(wordMeta);
         } else {
+            if (!StringUtils.hasText(wordMeta.getWord())) {
+                wordMeta.setWord(english);
+            }
             wordMeta.setGenStatus("pending");
             wordMeta.setPromptHash(promptHash);
             wordMetaMapper.updateById(wordMeta);
@@ -161,19 +284,22 @@ public class LlmAsyncService {
                                  boolean timeoutOccurred) {
         boolean sentenceOk = sentenceResult != null && StringUtils.hasText(sentenceResult.sentenceEn());
         boolean synonymOk = synonymResult != null && synonymResult.synonyms() != null && !synonymResult.synonyms().isEmpty();
-        boolean mnemonicOk = mnemonicResult != null && StringUtils.hasText(mnemonicResult.mnemonic());
+        boolean sentenceZhOk = sentenceResult != null && StringUtils.hasText(sentenceResult.sentenceZh());
+        boolean mnemonicOk = mnemonicResult != null
+                && (StringUtils.hasText(mnemonicResult.mnemonic()) || StringUtils.hasText(mnemonicResult.rootAnalysis()));
+        sentenceOk = sentenceOk || sentenceZhOk;
 
         String genStatus;
         if (sentenceOk && synonymOk && mnemonicOk) {
             genStatus = "full";
-        } else if (sentenceOk) {
+        } else if (sentenceOk || synonymOk || mnemonicOk) {
             genStatus = "partial";
         } else {
             genStatus = "fallback";
         }
 
         String sentenceZh = sentenceResult == null ? null : sentenceResult.sentenceZh();
-        if (timeoutOccurred && !StringUtils.hasText(sentenceZh)) {
+        if ("fallback".equals(genStatus) && timeoutOccurred && !StringUtils.hasText(sentenceZh)) {
             sentenceZh = TIMEOUT_FALLBACK_TEXT;
         }
 
@@ -230,18 +356,14 @@ public class LlmAsyncService {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
-    private String safeGenerate(String prompt) throws TimeoutException {
+    private String safeGenerate(String prompt, String provider) {
         if (!StringUtils.hasText(prompt)) {
             return null;
         }
-        try {
-            return ollamaClient.generate(prompt);
-        } catch (Exception ex) {
-            if (isTimeoutException(ex)) {
-                throw new TimeoutException("ollama request timeout");
-            }
-            throw ex;
+        if (LlmProvider.CLOUD.equals(provider)) {
+            return cloudLlmClient.generate(prompt);
         }
+        return ollamaClient.generate(prompt);
     }
 
     private String buildPrompt(PromptType type, String style, WordBase wordBase, String pos) {
@@ -313,17 +435,323 @@ public class LlmAsyncService {
         return value == null ? "" : value;
     }
 
-    private boolean isTimeoutException(Throwable throwable) {
+    private boolean hasSentenceContent(LlmResponseParser.SentenceResult sentenceResult) {
+        return sentenceResult != null
+                && (StringUtils.hasText(sentenceResult.sentenceEn()) || StringUtils.hasText(sentenceResult.sentenceZh()));
+    }
+
+    private boolean hasSynonymContent(LlmResponseParser.SynonymResult synonymResult) {
+        return synonymResult != null && synonymResult.synonyms() != null && !synonymResult.synonyms().isEmpty();
+    }
+
+    private boolean hasMnemonicContent(LlmResponseParser.MnemonicResult mnemonicResult) {
+        return mnemonicResult != null
+                && (StringUtils.hasText(mnemonicResult.mnemonic()) || StringUtils.hasText(mnemonicResult.rootAnalysis()));
+    }
+
+    private boolean shouldTrySupplement(LlmResponseParser.SynonymResult synonymResult,
+                                        LlmResponseParser.MnemonicResult mnemonicResult) {
+        return !hasSynonymContent(synonymResult) || !hasMnemonicContent(mnemonicResult);
+    }
+
+    private void persistPendingSentence(WordMeta wordMeta,
+                                        LlmResponseParser.SentenceResult sentenceResult,
+                                        String promptHash) {
+        if (wordMeta == null || !hasSentenceContent(sentenceResult)) {
+            return;
+        }
+        try {
+            wordMeta.setSentenceEn(sentenceResult.sentenceEn());
+            wordMeta.setSentenceZh(sentenceResult.sentenceZh());
+            wordMeta.setSentenceDifficulty(sentenceResult.difficulty());
+            wordMeta.setGenStatus("pending");
+            wordMeta.setPromptHash(promptHash);
+            if (wordMeta.getId() == null) {
+                wordMetaMapper.insert(wordMeta);
+            } else {
+                wordMetaMapper.updateById(wordMeta);
+            }
+        } catch (Exception ex) {
+            log.warn("persist pending sentence failed, wordMetaId={}", wordMeta.getId(), ex);
+        }
+    }
+
+    private LlmResponseParser.SentenceResult ensureSentenceResult(LlmResponseParser.SentenceResult parsed, String rawContent) {
+        if (parsed != null && (StringUtils.hasText(parsed.sentenceEn()) || StringUtils.hasText(parsed.sentenceZh()))) {
+            return parsed;
+        }
+        String plain = toPlainText(rawContent, 240);
+        if (!StringUtils.hasText(plain)) {
+            return parsed;
+        }
+        return new LlmResponseParser.SentenceResult(null, plain, null);
+    }
+
+    private LlmResponseParser.SynonymResult ensureSynonymResult(LlmResponseParser.SynonymResult parsed, String rawContent) {
+        if (parsed != null && parsed.synonyms() != null && !parsed.synonyms().isEmpty()) {
+            return parsed;
+        }
+        String plain = toPlainText(rawContent, 300);
+        if (!StringUtils.hasText(plain)) {
+            return parsed;
+        }
+        List<LlmResponseParser.SynonymItem> fallbackItems = new ArrayList<>();
+        fallbackItems.add(new LlmResponseParser.SynonymItem(null, plain, null));
+        return new LlmResponseParser.SynonymResult(fallbackItems);
+    }
+
+    private LlmResponseParser.MnemonicResult ensureMnemonicResult(LlmResponseParser.MnemonicResult parsed, String rawContent) {
+        if (parsed != null && (StringUtils.hasText(parsed.mnemonic()) || StringUtils.hasText(parsed.rootAnalysis()))) {
+            return parsed;
+        }
+        String plain = toPlainText(rawContent, 240);
+        if (!StringUtils.hasText(plain)) {
+            return parsed;
+        }
+        return new LlmResponseParser.MnemonicResult(plain, null);
+    }
+
+    private String toPlainText(String rawContent, int maxLen) {
+        if (!StringUtils.hasText(rawContent)) {
+            return null;
+        }
+        String text = rawContent
+                .replace("```json", "")
+                .replace("```", "")
+                .replace("\r", " ")
+                .replace("\n", " ")
+                .trim();
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        if (text.length() <= maxLen) {
+            return text;
+        }
+        return text.substring(0, maxLen) + "...";
+    }
+
+    private String buildSupplementPrompt(WordBase wordBase, String pos) {
+        return """
+                Return ONLY valid JSON:
+                {
+                  "word":"%s",
+                  "synonyms":[
+                    {"synonym":"...", "difference":"中文说明", "example":"English example"}
+                  ],
+                  "mnemonic":"中文助记",
+                  "root_analysis":"可为空"
+                }
+                word=%s
+                phonetic=%s
+                pos=%s
+                chinese=%s
+                """.formatted(
+                defaultString(wordBase.english),
+                defaultString(wordBase.english),
+                defaultString(wordBase.phonetic),
+                defaultString(pos),
+                defaultString(wordBase.chinese)
+        );
+    }
+
+    private String buildExplainPrompt(WordBase wordBase) {
+        return """
+                请为英语单词生成面向中国 CET4/6 学习者的智能解释，返回纯文本中文，控制在120字以内，包含：
+                1) 核心含义
+                2) 常见使用场景
+                3) 一个易错点提醒
+                单词：%s
+                音标：%s
+                参考中文释义：%s
+                """.formatted(
+                defaultString(wordBase.english),
+                defaultString(wordBase.phonetic),
+                defaultString(wordBase.chinese)
+        );
+    }
+
+    private WordMeta ensureWordMetaForExplain(Long wordId, String wordType, String style, String english) {
+        WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+        if (wordMeta != null) {
+            if (!StringUtils.hasText(wordMeta.getWord())) {
+                wordMeta.setWord(defaultString(english));
+                wordMetaMapper.updateById(wordMeta);
+            }
+            return wordMeta;
+        }
+        WordMeta created = WordMeta.builder()
+                .wordId(wordId)
+                .wordType(wordType)
+                .word(defaultString(english))
+                .style(style)
+                .genStatus("pending")
+                .promptHash(CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style))
+                .aiExplainStatus("pending")
+                .build();
+        wordMetaMapper.insert(created);
+        return created;
+    }
+
+    private CompletableFuture<GenerationAttempt> generateAsync(String existingContent,
+                                                                String promptType,
+                                                                PromptType promptEnum,
+                                                                String style,
+                                                                WordBase wordBase,
+                                                                String pos,
+                                                                String provider,
+                                                                Long wordId,
+                                                                String wordType) {
+        if (StringUtils.hasText(existingContent)) {
+            return CompletableFuture.completedFuture(new GenerationAttempt(existingContent, false));
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String prompt = buildPrompt(promptEnum, style, wordBase, pos);
+                String content = safeGenerate(prompt, provider);
+                return new GenerationAttempt(content, false);
+            } catch (Exception ex) {
+                boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
+                return new GenerationAttempt(null, timeoutOccurred);
+            }
+        }, llmTaskExecutor);
+    }
+
+    private GenerationAttempt generateSync(String existingContent,
+                                           String promptType,
+                                           PromptType promptEnum,
+                                           String style,
+                                           WordBase wordBase,
+                                           String pos,
+                                           String provider,
+                                           Long wordId,
+                                           String wordType) {
+        if (StringUtils.hasText(existingContent)) {
+            return new GenerationAttempt(existingContent, false);
+        }
+        try {
+            String prompt = buildPrompt(promptEnum, style, wordBase, pos);
+            String content = safeGenerate(prompt, provider);
+            return new GenerationAttempt(content, false);
+        } catch (Exception ex) {
+            boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
+            return new GenerationAttempt(null, timeoutOccurred);
+        }
+    }
+
+    private boolean logGenerationFailure(String promptType,
+                                         Long wordId,
+                                         String wordType,
+                                         String style,
+                                         String provider,
+                                         Exception ex) {
+        LlmFailureType failureType = classifyFailure(ex);
+        String reason = buildFailureReason(ex);
+        if (failureType == LlmFailureType.TIMEOUT) {
+            log.warn("{} generation timeout, wordId={}, wordType={}, style={}, provider={}, reason={}",
+                    promptType, wordId, wordType, style, provider, reason);
+            return true;
+        }
+        if (failureType == LlmFailureType.AUTH) {
+            log.error("{} generation auth failed, wordId={}, wordType={}, style={}, provider={}, reason={}",
+                    promptType, wordId, wordType, style, provider, reason);
+            return false;
+        }
+        if (failureType == LlmFailureType.CONNECTION) {
+            log.error("{} generation connection failed, wordId={}, wordType={}, style={}, provider={}, reason={}",
+                    promptType, wordId, wordType, style, provider, reason);
+            return false;
+        }
+        log.error("{} generation failed, wordId={}, wordType={}, style={}, provider={}, reason={}",
+                promptType, wordId, wordType, style, provider, reason, ex);
+        return false;
+    }
+
+    private LlmFailureType classifyFailure(Throwable throwable) {
         Throwable current = throwable;
         while (current != null) {
             if (current instanceof TimeoutException
-                    || current instanceof SocketTimeoutException
-                    || current instanceof ResourceAccessException) {
-                return true;
+                    || current instanceof SocketTimeoutException) {
+                return LlmFailureType.TIMEOUT;
+            }
+            if (current instanceof HttpStatusCodeException statusCodeException) {
+                int code = statusCodeException.getStatusCode().value();
+                if (code == 401 || code == 403) {
+                    return LlmFailureType.AUTH;
+                }
+            }
+            if (current instanceof ConnectException || current instanceof UnknownHostException) {
+                return LlmFailureType.CONNECTION;
+            }
+            if (current instanceof ResourceAccessException resourceAccessException) {
+                String lowered = lowerCase(resourceAccessException.getMessage());
+                if (lowered.contains("timed out")) {
+                    return LlmFailureType.TIMEOUT;
+                }
+                return LlmFailureType.CONNECTION;
             }
             current = current.getCause();
         }
-        return false;
+        String message = lowerCase(throwable == null ? null : throwable.getMessage());
+        if (message.contains("api-key")
+                || message.contains("unauthorized")
+                || message.contains("forbidden")) {
+            return LlmFailureType.AUTH;
+        }
+        if (message.contains("timed out")) {
+            return LlmFailureType.TIMEOUT;
+        }
+        if (message.contains("connection refused")
+                || message.contains("failed to connect")
+                || message.contains("unknown host")
+                || message.contains("unexpected error occurred on a send")) {
+            return LlmFailureType.CONNECTION;
+        }
+        return LlmFailureType.OTHER;
+    }
+
+    private String buildFailureReason(Throwable throwable) {
+        Throwable root = throwable;
+        while (root != null && root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        if (root == null) {
+            return "unknown";
+        }
+        String message = StringUtils.hasText(root.getMessage()) ? root.getMessage() : "no message";
+        return root.getClass().getSimpleName() + ": " + message;
+    }
+
+    private String lowerCase(String value) {
+        return value == null ? "" : value.toLowerCase();
+    }
+
+    private void reconcileStatusAfterFailure(Long wordId, String wordType, String style) {
+        try {
+            WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+            if (wordMeta == null || !"pending".equalsIgnoreCase(wordMeta.getGenStatus())) {
+                return;
+            }
+            boolean sentenceOk = StringUtils.hasText(wordMeta.getSentenceEn()) || StringUtils.hasText(wordMeta.getSentenceZh());
+            boolean synonymOk = StringUtils.hasText(wordMeta.getSynonymsJson())
+                    && !"[]".equals(wordMeta.getSynonymsJson().trim())
+                    && !"null".equalsIgnoreCase(wordMeta.getSynonymsJson().trim());
+            boolean mnemonicOk = StringUtils.hasText(wordMeta.getMnemonic()) || StringUtils.hasText(wordMeta.getRootAnalysis());
+
+            if (sentenceOk && synonymOk && mnemonicOk) {
+                wordMeta.setGenStatus("full");
+            } else if (sentenceOk || synonymOk || mnemonicOk) {
+                wordMeta.setGenStatus("partial");
+            } else {
+                wordMeta.setGenStatus("fallback");
+                if (!StringUtils.hasText(wordMeta.getSentenceZh())) {
+                    wordMeta.setSentenceZh(TIMEOUT_FALLBACK_TEXT);
+                }
+            }
+            wordMetaMapper.updateById(wordMeta);
+        } catch (Exception ex) {
+            log.warn("reconcile llm status after failure failed, wordId={}, wordType={}, style={}",
+                    wordId, wordType, style, ex);
+        }
     }
 
     private record WordBase(String english, String phonetic, String chinese) {
@@ -333,6 +761,16 @@ public class LlmAsyncService {
         SENTENCE,
         SYNONYM,
         MNEMONIC
+    }
+
+    private enum LlmFailureType {
+        TIMEOUT,
+        CONNECTION,
+        AUTH,
+        OTHER
+    }
+
+    private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
 

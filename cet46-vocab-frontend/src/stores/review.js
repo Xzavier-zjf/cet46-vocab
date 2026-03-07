@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { getTodayList, submitReview } from '@/api/review'
+import { useDashboardStore } from '@/stores/dashboard'
 
 const initialState = () => ({
   sessionState: 'idle',
@@ -59,6 +60,7 @@ export const useReviewStore = defineStore('review', {
           score,
           timeSpentMs
         })
+        useDashboardStore().invalidateCache()
         this.sessionStats.reviewed += 1
         this.sessionStats.scores.push(score)
         this.nextCard()

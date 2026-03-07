@@ -18,21 +18,33 @@ request.interceptors.request.use((config) => {
 })
 
 request.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    const payload = response?.data
+    if (typeof payload?.code === 'number' && payload.code !== 200) {
+      const err = new Error(payload?.message || '请求失败')
+      err.businessCode = payload.code
+      err.businessMessage = payload?.message
+      throw err
+    }
+    return payload
+  },
   (error) => {
     if (error?.code === 'ERR_CANCELED') {
       return Promise.reject(error)
     }
 
     const status = error?.response?.status
+    const businessCode = error?.businessCode
     const userStore = useUserStore()
-    if (status === 401) {
+
+    if (status === 401 || businessCode === 401) {
       userStore.clearUserInfo()
       router.push(`/login?redirect=${encodeURIComponent(router.currentRoute.value.fullPath)}`)
       return Promise.reject(error)
     }
 
     const msg =
+      error?.businessMessage ||
       error?.response?.data?.message ||
       error?.message ||
       '请求失败，请稍后重试'

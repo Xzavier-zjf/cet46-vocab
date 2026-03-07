@@ -8,13 +8,15 @@
         <id property="id" column="id"/>
         <result property="wordId" column="word_id"/>
         <result property="wordType" column="word_type"/>
+        <result property="word" column="word"/>
         <result property="style" column="style"/>
         <result property="sentenceEn" column="sentence_en"/>
         <result property="sentenceZh" column="sentence_zh"/>
-        <result property="sentenceDifficulty" column="sentence_difficulty"/>
         <result property="synonymsJson" column="synonyms_json"/>
         <result property="mnemonic" column="mnemonic"/>
         <result property="rootAnalysis" column="root_analysis"/>
+        <result property="aiExplain" column="ai_explain"/>
+        <result property="aiExplainStatus" column="ai_explain_status"/>
         <result property="pos" column="pos"/>
         <result property="genStatus" column="gen_status"/>
         <result property="promptHash" column="prompt_hash"/>
@@ -23,12 +25,14 @@
     </resultMap>
 
     <select id="selectByWordAndStyle" resultMap="WordMetaResultMap">
-        SELECT id, word_id, word_type, style, sentence_en, sentence_zh, sentence_difficulty,
-               synonyms_json, mnemonic, root_analysis, pos, gen_status, prompt_hash, created_at, updated_at
+        SELECT id, word_id, word_type, word, style, sentence_en, sentence_zh,
+               synonyms_json, mnemonic, root_analysis, ai_explain, ai_explain_status,
+               pos, gen_status, prompt_hash, created_at, updated_at
         FROM word_meta
         WHERE word_id = #{wordId}
           AND word_type = #{wordType}
           AND style = #{style}
         LIMIT 1
     </select>
+
 </mapper>

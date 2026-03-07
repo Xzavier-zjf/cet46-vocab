@@ -11,6 +11,12 @@ export const useDashboardStore = defineStore('dashboard', {
     lastFetchTime: null
   }),
   actions: {
+    invalidateCache() {
+      this.overview = null
+      this.stats = null
+      this.lastFetchTime = null
+    },
+
     async fetchOverview() {
       const now = Date.now()
       if (this.overview && this.lastFetchTime && now - this.lastFetchTime < CACHE_MS) {

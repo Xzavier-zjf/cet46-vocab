@@ -4,6 +4,7 @@ import com.cet46.vocab.common.PageResult;
 import com.cet46.vocab.dto.request.WordListQuery;
 import com.cet46.vocab.dto.response.WordDetailResponse;
 import com.cet46.vocab.dto.response.WordListItem;
+import com.cet46.vocab.dto.response.WordProgressStatusResponse;
 
 public interface WordService {
 
@@ -11,5 +12,9 @@ public interface WordService {
 
     WordDetailResponse getWordDetail(Long wordId, String wordType, Long userId);
 
+    void invalidateWordDetailCache(Long userId, Long wordId, String wordType);
+
     void addWordToLearn(Long wordId, String wordType, Long userId);
+
+    WordProgressStatusResponse getProgressStatus(Long wordId, String wordType, Long userId);
 }

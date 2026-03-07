@@ -60,9 +60,17 @@ const dailyTarget = computed(() => Number(userStore.dailyTarget || 20))
 const learningCount = computed(() => words.value.filter((item) => item.isLearning && !item.isCompleted).length)
 const completedCount = computed(() => words.value.filter((item) => item.isCompleted).length)
 
+const normalizeProgressStatus = (item) => {
+  const raw = String(item?.progressStatus || '').trim().toUpperCase()
+  if (raw === 'COMPLETED' || raw === 'LEARNING' || raw === 'NOT_LEARNING') {
+    return raw
+  }
+  return item?.isLearning ? 'LEARNING' : 'NOT_LEARNING'
+}
+
 const mapWordStatus = (list) =>
   list.map((item) => {
-    const progressStatus = item?.progressStatus || (item?.isLearning ? 'LEARNING' : 'NOT_LEARNING')
+    const progressStatus = normalizeProgressStatus(item)
     return {
       ...item,
       progressStatus,
@@ -84,23 +92,38 @@ const loadWords = async () => {
     })
     const list = Array.isArray(res?.data?.list) ? res.data.list : []
     words.value = mapWordStatus(list)
+  } catch (error) {
+    ElMessage.error(error?.businessMessage || error?.message || '加载学习词失败')
   } finally {
     loading.value = false
   }
 }
 
 const addToLearn = async (item) => {
-  if (item.isLearning || item.isCompleted || item.adding) return
+  const currentStatus = normalizeProgressStatus(item)
+  if (item.adding) return
+  if (currentStatus === 'LEARNING') {
+    ElMessage.info('该单词已在学习中')
+    return
+  }
+  if (currentStatus === 'COMPLETED') {
+    ElMessage.info('该单词已完成学习')
+    return
+  }
+
   item.adding = true
   try {
     await request.post('/word/learn/add', { wordId: item.wordId, wordType: item.wordType })
     const statusRes = await request.get('/word/progress/status', {
       params: { wordId: item.wordId, wordType: item.wordType }
     })
-    item.progressStatus = statusRes?.data?.status || 'LEARNING'
+    item.progressStatus = normalizeProgressStatus({ progressStatus: statusRes?.data?.status, isLearning: true })
     item.isLearning = item.progressStatus === 'LEARNING'
     item.isCompleted = item.progressStatus === 'COMPLETED'
     ElMessage.success('已加入学习计划')
+    await loadWords()
+  } catch (error) {
+    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
   } finally {
     item.adding = false
   }

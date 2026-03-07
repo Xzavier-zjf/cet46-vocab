@@ -18,11 +18,66 @@
     </resultMap>
 
     <select id="selectTodayReview" resultMap="UserWordProgressResultMap">
-        SELECT id, user_id, word_id, word_type, easiness, interval, repetition,
-               next_review_date, created_at, updated_at
-        FROM user_word_progress
-        WHERE user_id = #{userId}
-          AND next_review_date &lt;= CURRENT_DATE
-        ORDER BY next_review_date ASC, id ASC
+        SELECT p.id, p.user_id, p.word_id, p.word_type, p.easiness, p.`interval` AS `interval`, p.repetition,
+               p.next_review_date, p.created_at, p.updated_at
+        FROM user_word_progress p
+        WHERE p.user_id = #{userId}
+          AND p.next_review_date &lt;= CURRENT_DATE
+        ORDER BY
+            CASE WHEN EXISTS (
+                SELECT 1 FROM review_log rl
+                WHERE rl.user_id = #{userId}
+                  AND rl.word_id = p.word_id
+                  AND rl.word_type = p.word_type
+            ) THEN 1 ELSE 0 END ASC,
+            p.next_review_date ASC,
+            p.id ASC
+    </select>
+
+    <select id="selectImmediateReview" resultMap="UserWordProgressResultMap">
+        SELECT p.id,
+               p.user_id,
+               p.word_id,
+               p.word_type,
+               p.easiness,
+               p.`interval` AS `interval`,
+               p.repetition,
+               p.next_review_date,
+               p.created_at,
+               p.updated_at
+        FROM user_word_progress p
+        LEFT JOIN (
+            SELECT word_id,
+                   word_type,
+                   COUNT(1) AS reviewed_total
+            FROM review_log
+            WHERE user_id = #{userId}
+            GROUP BY word_id, word_type
+        ) ra
+          ON ra.word_id = p.word_id
+         AND ra.word_type = p.word_type
+        LEFT JOIN (
+            SELECT word_id,
+                   word_type,
+                   COUNT(1) AS reviewed_today,
+                   MAX(reviewed_at) AS last_reviewed_at
+            FROM review_log
+            WHERE user_id = #{userId}
+              AND reviewed_at &gt;= CURRENT_DATE
+              AND reviewed_at &lt; DATE_ADD(CURRENT_DATE, INTERVAL 1 DAY)
+            GROUP BY word_id, word_type
+        ) r
+          ON r.word_id = p.word_id
+         AND r.word_type = p.word_type
+        WHERE p.user_id = #{userId}
+        ORDER BY
+            CASE WHEN p.next_review_date &lt;= CURRENT_DATE THEN 0 ELSE 1 END ASC,
+            CASE WHEN IFNULL(ra.reviewed_total, 0) = 0 THEN 0 ELSE 1 END ASC,
+            CASE WHEN IFNULL(r.reviewed_today, 0) = 0 THEN 0 ELSE 1 END ASC,
+            IFNULL(r.reviewed_today, 0) ASC,
+            IFNULL(r.last_reviewed_at, '1970-01-01 00:00:00') ASC,
+            p.next_review_date ASC,
+            p.id ASC
+        LIMIT #{limit}
     </select>
 </mapper>

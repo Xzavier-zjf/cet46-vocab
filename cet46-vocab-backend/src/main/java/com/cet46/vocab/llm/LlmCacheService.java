@@ -22,6 +22,10 @@ public class LlmCacheService {
         redisTemplate.opsForValue().set(hash, content);
     }
 
+    public void deleteCache(String hash) {
+        redisTemplate.delete(hash);
+    }
+
     public String buildHash(Long wordId, String wordType, String promptType, String style) {
         String raw = wordId + "_" + wordType + "_" + promptType + "_" + style;
         return Md5Utils.md5(raw);

@@ -7,8 +7,10 @@ export const useUserStore = defineStore('user', {
     token: getToken() || '',
     userId: null,
     nickname: '',
+    avatar: '',
     role: '',
     llmStyle: null,
+    llmProvider: 'local',
     dailyTarget: 20
   }),
   actions: {
@@ -17,8 +19,10 @@ export const useUserStore = defineStore('user', {
       this.token = data.token || ''
       this.userId = data.userId ?? null
       this.nickname = data.nickname || ''
+      this.avatar = data.avatar || ''
       this.role = data.role || ''
       this.llmStyle = data.llmStyle ?? null
+      this.llmProvider = data.llmProvider || 'local'
       this.dailyTarget = data.dailyTarget ?? 20
       if (this.token) {
         setToken(this.token)
@@ -28,8 +32,10 @@ export const useUserStore = defineStore('user', {
       this.token = ''
       this.userId = null
       this.nickname = ''
+      this.avatar = ''
       this.role = ''
       this.llmStyle = null
+      this.llmProvider = 'local'
       this.dailyTarget = 20
       removeToken()
     },
@@ -38,8 +44,10 @@ export const useUserStore = defineStore('user', {
       if (res?.code === 200 && res.data) {
         this.userId = res.data.userId ?? this.userId
         this.nickname = res.data.nickname || ''
+        this.avatar = res.data.avatar || ''
         this.role = res.data.role || ''
         this.llmStyle = res.data.llmStyle ?? null
+        this.llmProvider = res.data.llmProvider || 'local'
         this.dailyTarget = res.data.dailyTarget ?? 20
       }
       return res

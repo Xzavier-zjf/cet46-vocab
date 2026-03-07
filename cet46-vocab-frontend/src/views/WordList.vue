@@ -1,9 +1,9 @@
-﻿<template>
+<template>
   <section class="word-list-page">
     <div class="filter-bar">
       <el-radio-group v-model="query.type" @change="onFilterChange">
-        <el-radio-button label="cet4">CET4</el-radio-button>
-        <el-radio-button label="cet6">CET6</el-radio-button>
+        <el-radio-button value="cet4">CET4</el-radio-button>
+        <el-radio-button value="cet6">CET6</el-radio-button>
       </el-radio-group>
 
       <el-input
@@ -13,6 +13,9 @@
         placeholder="搜索英文单词"
         @clear="onKeywordClear"
       />
+      <el-button v-if="hasKeyword" text class="reset-search-btn" @click="resetKeywordSearch">
+        返回全部
+      </el-button>
 
       <el-select v-model="query.pos" class="pos-select" placeholder="词性筛选" @change="onFilterChange">
         <el-option label="全部词性" value="" />
@@ -22,6 +25,14 @@
         <el-option label="adv." value="adv" />
         <el-option label="其他" value="other" />
       </el-select>
+
+      <el-button
+        class="retry-pending-btn"
+        :loading="retryPendingLoading"
+        @click="retryPendingBatch"
+      >
+        批量重试AI
+      </el-button>
     </div>
 
     <el-table v-loading="loading" :data="tableData" class="word-table" border>
@@ -35,7 +46,8 @@
       <el-table-column label="词性" prop="pos" width="110" />
       <el-table-column label="操作" width="130" fixed="right">
         <template #default="scope">
-          <span v-if="scope.row.isLearning" class="learning-tag">学习中</span>
+          <span v-if="scope.row.progressStatus === 'COMPLETED'" class="completed-tag">已完成学习</span>
+          <span v-else-if="scope.row.progressStatus === 'LEARNING'" class="learning-tag">学习中</span>
           <el-button
             v-else
             class="add-btn"
@@ -52,10 +64,12 @@
     <div class="pager-wrap">
       <el-pagination
         background
-        layout="prev, pager, next, total"
+        layout="sizes, prev, pager, next, total"
+        :page-sizes="[10, 20, 50]"
         :total="pagination.total"
         :current-page="pagination.page"
         :page-size="pagination.size"
+        @size-change="onSizeChange"
         @current-change="onPageChange"
       />
     </div>
@@ -63,14 +77,16 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 
 const router = useRouter()
+const route = useRoute()
 
 const loading = ref(false)
+const retryPendingLoading = ref(false)
 const tableData = ref([])
 
 const query = reactive({
@@ -81,17 +97,49 @@ const query = reactive({
 
 const pagination = reactive({
   page: 1,
-  size: 20,
+  size: 10,
   total: 0
 })
 
 const keywordInput = ref('')
+const hasKeyword = computed(() => keywordInput.value.trim().length > 0 || query.keyword.length > 0)
 let searchTimer = null
 let listController = null
 
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+}
+
+const normalizeType = (value) => {
+  const type = String(value || '').toLowerCase()
+  return type === 'cet6' ? 'cet6' : 'cet4'
+}
+
+const syncStateFromRoute = () => {
+  query.type = normalizeType(route.query.type)
+  query.keyword = String(route.query.keyword || '').trim()
+  query.pos = String(route.query.pos || '').trim()
+  keywordInput.value = query.keyword
+  pagination.page = parsePositiveInt(route.query.page, 1)
+  pagination.size = parsePositiveInt(route.query.size, 10)
+}
+
+const syncRouteFromState = async () => {
+  const nextQuery = {
+    type: query.type,
+    page: String(pagination.page),
+    size: String(pagination.size)
+  }
+  if (query.keyword) nextQuery.keyword = query.keyword
+  if (query.pos) nextQuery.pos = query.pos
+  const sameQuery = JSON.stringify(route.query) === JSON.stringify(nextQuery)
+  if (sameQuery) return
+  await router.replace({ path: '/words', query: nextQuery })
+}
+
 const normalizePos = (value) => {
-  if (!value) return ''
-  if (value === 'other') return ''
+  if (!value || value === 'other') return ''
   return value
 }
 
@@ -106,81 +154,145 @@ const isOtherPos = (posValue) => {
   return parts.every((part) => !set.has(part))
 }
 
+const normalizeProgressStatus = (item) => {
+  const raw = String(item?.progressStatus || '').trim().toUpperCase()
+  if (raw === 'COMPLETED' || raw === 'LEARNING' || raw === 'NOT_LEARNING') {
+    return raw
+  }
+  return item?.isLearning ? 'LEARNING' : 'NOT_LEARNING'
+}
+
 const loadList = async () => {
   if (listController) {
     listController.abort()
   }
   listController = new AbortController()
-
   loading.value = true
   try {
+    const requestedPage = pagination.page
+    const requestedSize = pagination.size
     const params = {
       type: query.type,
-      page: pagination.page,
-      size: pagination.size,
+      page: requestedPage,
+      size: requestedSize,
       keyword: query.keyword || undefined,
       pos: normalizePos(query.pos) || undefined
     }
-    const res = await request.get('/word/list', {
-      params,
-      signal: listController.signal
-    })
+    const res = await request.get('/word/list', { params, signal: listController.signal })
     const list = Array.isArray(res?.data?.list) ? res.data.list : []
-    const mapped = list.map((item) => ({ ...item, adding: false }))
+    let renderList = list
+    let total = Number(res?.data?.total || 0)
 
-    if (query.pos === 'other') {
-      tableData.value = mapped.filter((item) => isOtherPos(item.pos))
-    } else {
-      tableData.value = mapped
+    if (list.length > requestedSize) {
+      total = list.length
+      const start = (requestedPage - 1) * requestedSize
+      const end = start + requestedSize
+      renderList = list.slice(start, end)
     }
 
-    pagination.total = Number(res?.data?.total || 0)
-    pagination.page = Number(res?.data?.page || pagination.page)
-    pagination.size = Number(res?.data?.size || pagination.size)
+    const mapped = renderList.map((item) => ({
+      ...item,
+      progressStatus: normalizeProgressStatus(item),
+      adding: false
+    }))
+
+    tableData.value = query.pos === 'other' ? mapped.filter((item) => isOtherPos(item.pos)) : mapped
+    pagination.total = total
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') {
-      throw error
+      ElMessage.error(error?.businessMessage || error?.message || '加载词库失败')
     }
   } finally {
-    if (listController?.signal?.aborted) {
-      return
+    if (!listController?.signal?.aborted) {
+      loading.value = false
     }
-    loading.value = false
   }
 }
 
 const onFilterChange = () => {
   pagination.page = 1
+  syncRouteFromState()
   loadList()
 }
 
 const onPageChange = (page) => {
   pagination.page = page
+  syncRouteFromState()
+  loadList()
+}
+
+const onSizeChange = (size) => {
+  pagination.size = size
+  pagination.page = 1
+  syncRouteFromState()
   loadList()
 }
 
 const onKeywordClear = () => {
   query.keyword = ''
+  keywordInput.value = ''
   pagination.page = 1
+  syncRouteFromState()
   loadList()
 }
 
+const resetKeywordSearch = () => onKeywordClear()
+
 const goDetail = (row) => {
-  router.push(`/words/${row.wordType}/${row.wordId}`)
+  router.push({
+    path: `/words/${row.wordType}/${row.wordId}`,
+    query: { from: route.fullPath }
+  })
 }
 
 const addToLearn = async (row) => {
-  if (row.isLearning || row.adding) return
+  const currentStatus = normalizeProgressStatus(row)
+  if (row.adding) return
+  if (currentStatus === 'LEARNING') {
+    ElMessage.info('该单词已在学习中')
+    return
+  }
+  if (currentStatus === 'COMPLETED') {
+    ElMessage.info('该单词已完成学习')
+    return
+  }
+
   row.adding = true
   try {
-    await request.post('/word/learn/add', {
-      wordId: row.wordId,
-      wordType: row.wordType
+    await request.post('/word/learn/add', { wordId: row.wordId, wordType: row.wordType })
+    const statusRes = await request.get('/word/progress/status', {
+      params: { wordId: row.wordId, wordType: row.wordType }
     })
-    row.isLearning = true
+    row.progressStatus = normalizeProgressStatus({ progressStatus: statusRes?.data?.status, isLearning: true })
     ElMessage.success('已加入学习计划')
+    await loadList()
+  } catch (error) {
+    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
   } finally {
     row.adding = false
+  }
+}
+
+const retryPendingBatch = async () => {
+  if (retryPendingLoading.value) return
+  retryPendingLoading.value = true
+  try {
+    const res = await request.post('/word/llm/retry-pending', null, {
+      params: {
+        wordType: query.type,
+        limit: 30
+      }
+    })
+    const queued = Number(res?.data?.queued || 0)
+    if (queued > 0) {
+      ElMessage.success(`已提交 ${queued} 个单词的AI重试任务`)
+    } else {
+      ElMessage.info('当前没有可重试的 pending 单词')
+    }
+  } catch (error) {
+    ElMessage.error(error?.businessMessage || error?.message || '批量重试失败')
+  } finally {
+    retryPendingLoading.value = false
   }
 }
 
@@ -189,12 +301,15 @@ watch(keywordInput, (value) => {
   searchTimer = setTimeout(() => {
     query.keyword = value.trim()
     pagination.page = 1
+    syncRouteFromState()
     loadList()
   }, 300)
 })
 
-onMounted(() => {
-  loadList()
+onMounted(async () => {
+  syncStateFromRoute()
+  await syncRouteFromState()
+  await loadList()
 })
 
 onUnmounted(() => {
@@ -236,6 +351,10 @@ onUnmounted(() => {
   width: 160px;
 }
 
+.reset-search-btn {
+  color: #6d7f95;
+}
+
 .word-table {
   border-radius: 12px;
   overflow: hidden;
@@ -246,7 +365,7 @@ onUnmounted(() => {
   background: transparent;
   border: 0;
   cursor: pointer;
-  color: #1A2B4A;
+  color: #1a2b4a;
   font-size: 15px;
   font-weight: 700;
 }
@@ -256,19 +375,29 @@ onUnmounted(() => {
 }
 
 .learning-tag {
-  color: #8BAFD4;
+  color: #8bafd4;
   font-weight: 600;
 }
 
+.completed-tag {
+  color: #4caf50;
+  font-weight: 700;
+}
+
 .add-btn {
-  border: 1px solid #C9A84C;
-  color: #C9A84C;
+  border: 1px solid #c9a84c;
+  color: #c9a84c;
   background: #fff;
 }
 
 .add-btn:hover {
   border-color: #b79434;
   color: #b79434;
+}
+
+.retry-pending-btn {
+  border-color: #1a2b4a;
+  color: #1a2b4a;
 }
 
 .pager-wrap {
