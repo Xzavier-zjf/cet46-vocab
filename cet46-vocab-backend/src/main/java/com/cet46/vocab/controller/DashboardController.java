@@ -72,8 +72,14 @@ public class DashboardController {
 
     private Map<String, Object> buildOverviewData(Long userId) {
         Integer todayDue = queryInt(
-                "SELECT COUNT(1) FROM user_word_progress WHERE user_id = ? AND next_review_date <= CURRENT_DATE",
-                userId
+                "SELECT COUNT(1) FROM user_word_progress uwp " +
+                        "WHERE uwp.user_id = ? " +
+                        "AND uwp.next_review_date <= CURRENT_DATE " +
+                        "AND NOT EXISTS (" +
+                        "  SELECT 1 FROM review_log rl " +
+                        "  WHERE rl.user_id = ? AND rl.word_id = uwp.word_id AND rl.word_type = uwp.word_type" +
+                        ")",
+                userId, userId
         );
 
         List<Map<String, Object>> userRows = jdbcTemplate.queryForList(
@@ -119,7 +125,9 @@ public class DashboardController {
         data.put("streakDays", streakDays == null ? 0 : streakDays);
         data.put("totalLearned", totalLearned == null ? 0 : totalLearned);
         data.put("masteredCount", masteredCount == null ? 0 : masteredCount);
-        data.put("weeklyReport", "You completed " + (weeklyReviewed == null ? 0 : weeklyReviewed) + " reviews this week.");
+        int weeklyDone = weeklyReviewed == null ? 0 : weeklyReviewed;
+        int mastered = masteredCount == null ? 0 : masteredCount;
+        data.put("weeklyReport", "本周你已完成 " + weeklyDone + " 次复习，累计掌握 " + mastered + " 个单词。继续保持，按计划复习会更稳。");
         data.put("pressureAlert", pressureAlert);
         return data;
     }

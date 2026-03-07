@@ -6,7 +6,7 @@
       <RouterLink
         v-for="item in menuItems"
         :key="item.path"
-        :to="item.path"
+        :to="resolveMenuPath(item.path)"
         class="menu-item"
         :class="{ active: isActive(item.path) }"
       >
@@ -18,9 +18,7 @@
     </nav>
 
     <div class="footer">
-      <el-button class="logout-btn" text @click="handleLogout">
-        退出登录
-      </el-button>
+      <el-button class="logout-btn" text @click="handleLogout">退出登录</el-button>
     </div>
   </aside>
 </template>
@@ -29,33 +27,50 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { House, Collection, Refresh, Edit, TrendCharts, User } from '@element-plus/icons-vue'
+import { House, Collection, Reading, Refresh, Edit, TrendCharts, User, Upload } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
-const Books = Collection
+const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
 
-const menuItems = computed(() => [
-  { label: '学习仪表盘', path: '/dashboard', icon: House },
-  { label: '词库浏览', path: '/words', icon: Books },
-  { label: '开始复习', path: '/review', icon: Refresh },
-  { label: '模拟测验', path: '/quiz', icon: Edit },
-  { label: '学习统计', path: '/stats', icon: TrendCharts },
-  { label: '我的资料', path: '/profile', icon: User }
-])
+const menuItems = computed(() => {
+  const items = [
+    { label: '学习仪表盘', path: '/dashboard', icon: House },
+    { label: '今日学习', path: '/learn', icon: Reading },
+    { label: '词库浏览', path: '/words', icon: Collection },
+    { label: '开始复习', path: '/review', icon: Refresh },
+    { label: '模拟测验', path: '/quiz', icon: Edit },
+    { label: '学习统计', path: '/stats', icon: TrendCharts },
+    { label: '我的资料', path: '/profile', icon: User }
+  ]
+  if (userStore.role === 'ADMIN') {
+    items.push({ label: '词库导入', path: '/admin', icon: Upload })
+  }
+  return items
+})
 
 const isActive = (path) => route.path === path || route.path.startsWith(`${path}/`)
+
+const resolveMenuPath = (path) => {
+  try {
+    const memory = JSON.parse(sessionStorage.getItem(MENU_ROUTE_MEMORY_KEY) || '{}')
+    const remembered = memory?.[path]
+    return remembered || path
+  } catch {
+    return path
+  }
+}
 
 const handleLogout = async () => {
   try {
     if (userStore.token) {
       await logout()
     }
-  } catch (error) {
-    ElMessage.warning('登出请求失败，已执行本地退出')
+  } catch {
+    ElMessage.warning('退出请求失败，已执行本地退出')
   } finally {
     userStore.clearUserInfo()
     router.push('/login')
@@ -66,12 +81,16 @@ const handleLogout = async () => {
 <style scoped>
 .sidebar {
   width: 220px;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #1A2B4A;
+  background: #1a2b4a;
   color: #fff;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .logo {
@@ -118,7 +137,7 @@ const handleLogout = async () => {
   top: 0;
   width: 4px;
   height: 100%;
-  background: #C9A84C;
+  background: #c9a84c;
   border-radius: 0 4px 4px 0;
 }
 
@@ -141,7 +160,8 @@ const handleLogout = async () => {
 
 .logout-btn:hover {
   color: #fff;
-  border-color: #C9A84C;
+  border-color: #c9a84c;
   background: rgba(201, 168, 76, 0.15);
 }
 </style>
+
