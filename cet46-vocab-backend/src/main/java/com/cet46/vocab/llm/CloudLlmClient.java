@@ -57,6 +57,10 @@ public class CloudLlmClient {
     }
 
     public String generate(String prompt) {
+        return generate(prompt, cloudLlmProperties.getMaxTokens());
+    }
+
+    public String generate(String prompt, Integer maxTokens) {
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
             throw new OllamaClient.LlmCallException("cloud llm is disabled");
         }
@@ -76,6 +80,9 @@ public class CloudLlmClient {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", cloudLlmProperties.getModel());
         requestBody.put("temperature", cloudLlmProperties.getTemperature());
+        if (maxTokens != null && maxTokens > 0) {
+            requestBody.put("max_tokens", maxTokens);
+        }
         requestBody.put("messages", List.of(Map.of("role", "user", "content", prompt)));
 
         HttpEntity<Map<String, Object>> requestEntity = new HttpEntity<>(requestBody, headers);

@@ -29,8 +29,9 @@ import java.util.Locale;
 @RequestMapping("/assistant")
 public class AssistantController {
 
-    private static final int MAX_HISTORY_COUNT = 6;
-    private static final int MAX_TEXT_LEN = 600;
+    private static final String MODE_QUICK = "quick";
+    private static final String MODE_BALANCED = "balanced";
+    private static final String MODE_DETAILED = "detailed";
 
     private final UserMapper userMapper;
     private final OllamaClient ollamaClient;
@@ -61,11 +62,15 @@ public class AssistantController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String normalizedProvider = chooseProvider(provider);
-        String prompt = buildAssistantPrompt(req, style);
+        String answerMode = normalizeAnswerMode(req.getAnswerMode());
+        ModeConfig modeConfig = resolveModeConfig(answerMode);
+        String prompt = buildAssistantPrompt(req, style, answerMode, modeConfig);
+
         try {
             String answer = LlmProvider.CLOUD.equals(normalizedProvider)
-                    ? cloudLlmClient.generate(prompt)
-                    : ollamaClient.generate(prompt);
+                    ? cloudLlmClient.generate(prompt, modeConfig.cloudMaxTokens())
+                    : ollamaClient.generatePlainText(prompt, modeConfig.localNumPredict());
+
             AssistantChatResponse data = AssistantChatResponse.builder()
                     .answer(cleanAnswer(answer))
                     .provider(normalizedProvider)
@@ -116,51 +121,96 @@ public class AssistantController {
                 && StringUtils.hasText(cloudLlmProperties.getApiKey());
     }
 
-    private String buildAssistantPrompt(AssistantChatRequest req, String style) {
+    private String normalizeAnswerMode(String answerMode) {
+        if (!StringUtils.hasText(answerMode)) {
+            return MODE_BALANCED;
+        }
+        String mode = answerMode.trim().toLowerCase(Locale.ROOT);
+        if (MODE_QUICK.equals(mode) || MODE_DETAILED.equals(mode)) {
+            return mode;
+        }
+        return MODE_BALANCED;
+    }
+
+    private ModeConfig resolveModeConfig(String answerMode) {
+        if (MODE_QUICK.equals(answerMode)) {
+            return new ModeConfig(
+                    2,
+                    220,
+                    260,
+                    280,
+                    "Give a concise answer in 3-5 short points."
+            );
+        }
+        if (MODE_DETAILED.equals(answerMode)) {
+            return new ModeConfig(
+                    6,
+                    420,
+                    680,
+                    760,
+                    "Give a detailed structured answer with examples and a brief action plan."
+            );
+        }
+        return new ModeConfig(
+                4,
+                320,
+                420,
+                520,
+                "Give a balanced practical answer with clear structure."
+        );
+    }
+
+    private String buildAssistantPrompt(AssistantChatRequest req,
+                                        String style,
+                                        String answerMode,
+                                        ModeConfig modeConfig) {
         StringBuilder sb = new StringBuilder();
         sb.append(PromptTemplate.LEARNING_ASSISTANT_SYSTEM).append('\n');
         sb.append("\n# USER PROFILE\n");
         sb.append("style=").append(style).append('\n');
         sb.append("target=中国大学生CET备考\n");
+        sb.append("answer_mode=").append(answerMode).append('\n');
 
         AssistantChatRequest.WordContext ctx = req.getWordContext();
         if (ctx != null) {
             sb.append("\n# WORD CONTEXT\n");
-            appendIfPresent(sb, "word", ctx.getWord());
-            appendIfPresent(sb, "wordId", ctx.getWordId() == null ? null : String.valueOf(ctx.getWordId()));
-            appendIfPresent(sb, "wordType", ctx.getWordType());
-            appendIfPresent(sb, "phonetic", ctx.getPhonetic());
-            appendIfPresent(sb, "pos", ctx.getPos());
-            appendIfPresent(sb, "chinese", ctx.getChinese());
-            appendIfPresent(sb, "fromPage", ctx.getFromPage());
+            appendIfPresent(sb, "word", ctx.getWord(), modeConfig.textLimit());
+            appendIfPresent(sb, "wordId", ctx.getWordId() == null ? null : String.valueOf(ctx.getWordId()), modeConfig.textLimit());
+            appendIfPresent(sb, "wordType", ctx.getWordType(), modeConfig.textLimit());
+            appendIfPresent(sb, "phonetic", ctx.getPhonetic(), modeConfig.textLimit());
+            appendIfPresent(sb, "pos", ctx.getPos(), modeConfig.textLimit());
+            appendIfPresent(sb, "chinese", ctx.getChinese(), modeConfig.textLimit());
+            appendIfPresent(sb, "fromPage", ctx.getFromPage(), modeConfig.textLimit());
         }
 
         List<AssistantChatRequest.MessageItem> history = req.getHistory();
         if (history != null && !history.isEmpty()) {
             sb.append("\n# RECENT CONVERSATION\n");
-            int start = Math.max(0, history.size() - MAX_HISTORY_COUNT);
+            int start = Math.max(0, history.size() - modeConfig.historyCount());
             for (int i = start; i < history.size(); i++) {
                 AssistantChatRequest.MessageItem item = history.get(i);
                 if (item == null || !StringUtils.hasText(item.getContent())) {
                     continue;
                 }
                 String role = normalizeRole(item.getRole());
-                sb.append(role).append(": ").append(trimText(item.getContent(), MAX_TEXT_LEN)).append('\n');
+                sb.append(role).append(": ").append(trimText(item.getContent(), modeConfig.textLimit())).append('\n');
             }
         }
 
         sb.append("\n# CURRENT QUESTION\n");
-        sb.append(trimText(req.getQuestion(), MAX_TEXT_LEN)).append('\n');
+        sb.append(trimText(req.getQuestion(), modeConfig.textLimit())).append('\n');
+        sb.append("\n# ANSWER LENGTH\n");
+        sb.append(modeConfig.lengthInstruction()).append('\n');
         sb.append("\n# OUTPUT FORMAT\n");
-        sb.append("请直接输出回答正文，不要使用Markdown代码块。");
+        sb.append("请直接输出回答正文，不要使用Markdown代码块。\n");
         return sb.toString();
     }
 
-    private void appendIfPresent(StringBuilder sb, String key, String value) {
+    private void appendIfPresent(StringBuilder sb, String key, String value, int maxLen) {
         if (!StringUtils.hasText(value)) {
             return;
         }
-        sb.append(key).append('=').append(trimText(value, MAX_TEXT_LEN)).append('\n');
+        sb.append(key).append('=').append(trimText(value, maxLen)).append('\n');
     }
 
     private String normalizeRole(String role) {
@@ -190,7 +240,7 @@ public class AssistantController {
         if (StringUtils.hasText(extracted)) {
             text = extracted;
         }
-        return trimText(text, 2000);
+        return trimText(text, 3000);
     }
 
     private String extractAnswerField(String raw) {
@@ -264,14 +314,21 @@ public class AssistantController {
         AssistantChatRequest.WordContext ctx = req.getWordContext();
         if (ctx != null && StringUtils.hasText(ctx.getWord())) {
             String word = ctx.getWord().trim();
-            suggestions.add("再给我2个" + word + "的四六级例句");
-            suggestions.add(word + "常见易错搭配有哪些");
-            suggestions.add(word + "和近义词在语气上有什么区别");
+            suggestions.add("再给我2个 " + word + " 的四六级例句");
+            suggestions.add(word + " 常见易错搭配有哪些");
+            suggestions.add(word + " 和近义词在语气上有什么区别");
             return suggestions;
         }
         suggestions.add("帮我制定本周四六级背词计划");
         suggestions.add("我总记不住单词，应该怎么复习");
         suggestions.add("给我3条四六级阅读提分建议");
         return suggestions;
+    }
+
+    private record ModeConfig(int historyCount,
+                              int textLimit,
+                              int localNumPredict,
+                              int cloudMaxTokens,
+                              String lengthInstruction) {
     }
 }

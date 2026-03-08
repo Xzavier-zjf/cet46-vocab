@@ -36,6 +36,15 @@ public class OllamaClient {
     }
 
     public String generate(String prompt) {
+        return generateWithOptions(prompt, 220, true);
+    }
+
+    public String generatePlainText(String prompt, int numPredict) {
+        int safeNumPredict = Math.max(64, numPredict);
+        return generateWithOptions(prompt, safeNumPredict, false);
+    }
+
+    private String generateWithOptions(String prompt, int numPredict, boolean includeFormat) {
         String url = llmProperties.getBaseUrl() + "/api/generate";
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -44,10 +53,10 @@ public class OllamaClient {
         requestBody.put("stream", false);
         requestBody.put("think", Boolean.TRUE.equals(llmProperties.getThink()));
         requestBody.put("options", Map.of(
-                "num_predict", 220,
+                "num_predict", numPredict,
                 "temperature", 0.3
         ));
-        if (StringUtils.hasText(llmProperties.getFormat())) {
+        if (includeFormat && StringUtils.hasText(llmProperties.getFormat())) {
             requestBody.put("format", llmProperties.getFormat().trim());
         }
 

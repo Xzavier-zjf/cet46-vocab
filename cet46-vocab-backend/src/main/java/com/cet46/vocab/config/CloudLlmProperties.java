@@ -19,5 +19,5 @@ public class CloudLlmProperties {
     private Duration timeout = Duration.ofSeconds(60);
     private Integer maxRetries = 1;
     private Double temperature = 0.3;
+    private Integer maxTokens = 600;
 }
-
