@@ -17,9 +17,9 @@ export const useDashboardStore = defineStore('dashboard', {
       this.lastFetchTime = null
     },
 
-    async fetchOverview() {
+    async fetchOverview(force = false) {
       const now = Date.now()
-      if (this.overview && this.lastFetchTime && now - this.lastFetchTime < CACHE_MS) {
+      if (!force && this.overview && this.lastFetchTime && now - this.lastFetchTime < CACHE_MS) {
         return this.overview
       }
       const res = await getOverview()

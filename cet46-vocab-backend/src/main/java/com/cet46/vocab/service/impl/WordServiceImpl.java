@@ -415,7 +415,7 @@ public class WordServiceImpl implements WordService {
             int end = Math.min(start + IN_BATCH_SIZE, wordIds.size());
             List<Long> batchIds = wordIds.subList(start, end);
             String placeholders = String.join(",", Collections.nCopies(batchIds.size(), "?"));
-            String sql = "SELECT DISTINCT word_id FROM review_log WHERE user_id = ? AND word_type = ? AND word_id IN (" + placeholders + ")";
+            String sql = "SELECT DISTINCT word_id FROM review_log WHERE user_id = ? AND word_type = ? AND score = 5 AND word_id IN (" + placeholders + ")";
 
             List<Object> params = new ArrayList<>();
             params.add(userId);
@@ -456,7 +456,7 @@ public class WordServiceImpl implements WordService {
     private boolean hasCompletedReview(Long userId, Long wordId, String wordType) {
         try {
             Integer count = jdbcTemplate.queryForObject(
-                    "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND word_id = ? AND word_type = ?",
+                    "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND word_id = ? AND word_type = ? AND score = 5",
                     Integer.class,
                     userId,
                     wordId,

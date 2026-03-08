@@ -40,17 +40,7 @@ public class DashboardController {
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
-
-        String cacheKey = DASHBOARD_OVERVIEW_CACHE_PREFIX + userId;
-        Object cached = redisTemplate.opsForValue().get(cacheKey);
-        if (cached instanceof Map<?, ?> cachedMap) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> data = (Map<String, Object>) cachedMap;
-            return Result.success(data);
-        }
-
         Map<String, Object> data = buildOverviewData(userId);
-        redisTemplate.opsForValue().set(cacheKey, data, 5, TimeUnit.MINUTES);
         return Result.success(data);
     }
 
@@ -71,15 +61,17 @@ public class DashboardController {
     }
 
     private Map<String, Object> buildOverviewData(Long userId) {
-        Integer todayDue = queryInt(
-                "SELECT COUNT(1) FROM user_word_progress uwp " +
+        Integer learningCount = queryInt(
+                "SELECT COUNT(DISTINCT CONCAT(uwp.word_id, '#', uwp.word_type)) " +
+                        "FROM user_word_progress uwp " +
                         "WHERE uwp.user_id = ? " +
-                        "AND uwp.next_review_date <= CURRENT_DATE " +
-                        "AND NOT EXISTS (" +
-                        "  SELECT 1 FROM review_log rl " +
-                        "  WHERE rl.user_id = ? AND rl.word_id = uwp.word_id AND rl.word_type = uwp.word_type" +
+                        "AND CONCAT(uwp.word_id, '#', uwp.word_type) NOT IN (" +
+                        "  SELECT DISTINCT CONCAT(rl.word_id, '#', rl.word_type) " +
+                        "  FROM review_log rl " +
+                        "  WHERE rl.user_id = ? AND rl.score = 5" +
                         ")",
-                userId, userId
+                userId,
+                userId
         );
 
         List<Map<String, Object>> userRows = jdbcTemplate.queryForList(
@@ -96,17 +88,18 @@ public class DashboardController {
                 userId
         );
 
-        Integer totalLearned = queryInt(
-                "SELECT COUNT(1) FROM user_word_progress WHERE user_id = ?",
-                userId
-        );
-
         Integer masteredCount = queryInt(
-                "SELECT COUNT(1) FROM user_word_progress WHERE user_id = ? AND repetition >= 3",
+                "SELECT COUNT(DISTINCT CONCAT(rl.word_id, '#', rl.word_type)) " +
+                        "FROM review_log rl " +
+                        "WHERE rl.user_id = ? AND rl.score = 5",
                 userId
         );
 
-        int due = todayDue == null ? 0 : todayDue;
+        int mastered = masteredCount == null ? 0 : masteredCount;
+        int learning = learningCount == null ? 0 : learningCount;
+        int totalLearned = learning + mastered;
+
+        int due = learning;
         int target = dailyTarget <= 0 ? 20 : dailyTarget;
         int pressureIndex = BigDecimal.valueOf((double) due * 100 / target)
                 .setScale(0, RoundingMode.HALF_UP)
@@ -120,13 +113,13 @@ public class DashboardController {
 
         Map<String, Object> data = new HashMap<>();
         data.put("todayDue", due);
+        data.put("learningCount", learning);
         data.put("dailyTarget", target);
         data.put("pressureIndex", pressureIndex);
         data.put("streakDays", streakDays == null ? 0 : streakDays);
-        data.put("totalLearned", totalLearned == null ? 0 : totalLearned);
-        data.put("masteredCount", masteredCount == null ? 0 : masteredCount);
+        data.put("totalLearned", totalLearned);
+        data.put("masteredCount", mastered);
         int weeklyDone = weeklyReviewed == null ? 0 : weeklyReviewed;
-        int mastered = masteredCount == null ? 0 : masteredCount;
         data.put("weeklyReport", "本周你已完成 " + weeklyDone + " 次复习，累计掌握 " + mastered + " 个单词。继续保持，按计划复习会更稳。");
         data.put("pressureAlert", pressureAlert);
         return data;

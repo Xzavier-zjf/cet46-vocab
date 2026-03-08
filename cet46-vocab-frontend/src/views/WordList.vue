@@ -86,9 +86,11 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { speakWord } from '@/utils/speech'
+import { useDashboardStore } from '@/stores/dashboard'
 
 const router = useRouter()
 const route = useRoute()
+const dashboardStore = useDashboardStore()
 
 const loading = ref(false)
 const retryPendingLoading = ref(false)
@@ -277,6 +279,7 @@ const addToLearn = async (row) => {
       params: { wordId: row.wordId, wordType: row.wordType }
     })
     row.progressStatus = normalizeProgressStatus({ progressStatus: statusRes?.data?.status, isLearning: true })
+    dashboardStore.invalidateCache()
     ElMessage.success('已加入学习计划')
     await loadList()
   } catch (error) {

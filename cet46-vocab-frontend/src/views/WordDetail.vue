@@ -3,7 +3,7 @@
     <section v-if="invalidParam" class="state-card">
       <h3>参数无效</h3>
       <p>请从词库列表重新进入该单词详情页。</p>
-      <el-button class="back-btn" @click="goBackToWords">上一步</el-button>
+      <el-button class="back-btn" @click="goBackToWords">返回</el-button>
     </section>
 
     <section v-else-if="loading" class="state-card">
@@ -13,13 +13,13 @@
     <section v-else-if="emptyData" class="state-card">
       <h3>未找到该单词</h3>
       <p>该词条可能不存在或类型参数不匹配，请返回词库页重试。</p>
-      <el-button class="back-btn" @click="goBackToWords">上一步</el-button>
+      <el-button class="back-btn" @click="goBackToWords">返回</el-button>
     </section>
 
     <template v-else>
       <div class="top-row">
         <div>
-          <el-button text class="back-link" @click="goBackToWords">上一步</el-button>
+          <el-button text class="back-link" @click="goBackToWords">返回</el-button>
           <h1 class="word">{{ detail.english || '-' }}</h1>
           <div class="meta-inline">
             <span class="phonetic">{{ detail.phonetic || '' }}</span>
@@ -148,17 +148,22 @@ const goBackToWords = () => {
     router.push(fromWordsRoute.value)
     return
   }
-  if (window.history.length > 1) {
-    router.go(-1)
-    return
-  }
-  router.push('/words')
+  const type = String(detail.wordType || route.params.type || 'cet4').toLowerCase() === 'cet6' ? 'cet6' : 'cet4'
+  router.push({
+    path: '/words',
+    query: {
+      type,
+      page: '1',
+      size: '10'
+    }
+  })
 }
 
 const goAskAssistant = () => {
   router.push({
     path: '/assistant',
     query: {
+      source: 'word_detail',
       from: route.fullPath,
       wordId: detail.wordId || '',
       wordType: detail.wordType || '',

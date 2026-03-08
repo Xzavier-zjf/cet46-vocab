@@ -7,6 +7,14 @@
           <p>我是你的四六级备考助手。可问单词、语法、例句、易混词和备考策略。</p>
         </div>
         <div class="intro-actions">
+          <el-switch
+            v-model="autoAskEnabled"
+            size="small"
+            inline-prompt
+            active-text="自动首问"
+            inactive-text="手动提问"
+            @change="persistAutoAskSetting"
+          />
           <el-button plain @click="openHistory">历史对话</el-button>
           <el-button type="primary" plain @click="createNewSession(true)">新建对话</el-button>
         </div>
@@ -15,6 +23,10 @@
         <el-tag size="small" type="info">{{ activeContext.word }}</el-tag>
         <el-tag v-if="activeContext.pos" size="small" effect="plain">{{ activeContext.pos }}</el-tag>
         <span class="context-text">{{ activeContext.chinese || '' }}</span>
+      </div>
+      <div v-if="activeContext.fromPage" class="source-row">
+        <span>来自单词详情：{{ activeContext.word || '当前单词' }}</span>
+        <el-button text size="small" @click="goBackToSource">返回该单词</el-button>
       </div>
     </section>
 
@@ -211,19 +223,22 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assistantChat } from '@/api/assistant'
 import request from '@/api/request'
 
 const route = useRoute()
+const router = useRouter()
 
 const STORAGE_KEY = 'assistant:sessions:v3'
 const LEGACY_STORAGE_KEY = 'assistant:sessions:v2'
+const AUTO_ASK_KEY = 'assistant:auto-ask:v1'
 const loading = ref(false)
 const learnActionLoading = ref(false)
 const llmActionLoading = ref(false)
 const question = ref('')
+const autoAskEnabled = ref(loadAutoAskSetting())
 const answerMode = ref('balanced')
 const historyVisible = ref(false)
 const selectedIds = ref([])
@@ -317,9 +332,13 @@ const quickQuestions = computed(() => {
 initSession()
 
 function initSession() {
+  const hasRouteWord = !!routeWordContext.value.word && !!routeWordContext.value.wordId
+  if (hasRouteWord) {
+    createNewSession(false, { tryAutoAsk: true })
+    return
+  }
   if (sessions.value.length === 0) {
-    const hasRouteWord = !!routeWordContext.value.word
-    createNewSession(!hasRouteWord)
+    createNewSession(true)
     return
   }
   const sorted = sortForDefaultActivate(sessions.value.filter((s) => s.hasInteraction))
@@ -338,7 +357,7 @@ function sortForDefaultActivate(list) {
   })
 }
 
-function createNewSession(forceGlobal) {
+function createNewSession(forceGlobal, options = {}) {
   const now = Date.now()
   sessions.value = sessions.value.filter((s) => s && s.hasInteraction)
   const context = forceGlobal ? {} : { ...routeWordContext.value }
@@ -359,6 +378,9 @@ function createNewSession(forceGlobal) {
   sessions.value.unshift(session)
   activeSessionId.value = session.id
   persistState()
+  if (options.tryAutoAsk && autoAskEnabled.value && context.word) {
+    send(`${context.word}怎么记更快？`, session.id)
+  }
 }
 
 function openHistory() {
@@ -444,13 +466,25 @@ function clearCurrentSession() {
   persistState()
 }
 
+function goBackToSource() {
+  const fromPage = activeContext.value?.fromPage
+  if (fromPage && typeof fromPage === 'string') {
+    router.push(fromPage)
+    return
+  }
+  router.push('/words')
+}
+
 function sendQuickQuestion(content) {
   send(content)
 }
 
-async function send(contentOverride = '') {
+async function send(contentOverride = '', targetSessionId = '') {
   const content = String(contentOverride || question.value || '').trim()
   if (!content || loading.value) return
+  if (targetSessionId) {
+    activeSessionId.value = targetSessionId
+  }
 
   pushMessage({ id: Date.now(), role: 'user', content })
   question.value = ''
@@ -759,6 +793,20 @@ function loadState() {
   return { sessions: [], groups: [] }
 }
 
+function loadAutoAskSetting() {
+  try {
+    const value = localStorage.getItem(AUTO_ASK_KEY)
+    if (value === null) return false
+    return value === '1'
+  } catch {
+    return false
+  }
+}
+
+function persistAutoAskSetting() {
+  localStorage.setItem(AUTO_ASK_KEY, autoAskEnabled.value ? '1' : '0')
+}
+
 function parseStorage(key) {
   try {
     const raw = localStorage.getItem(key)
@@ -875,6 +923,7 @@ function toNumber(value) {
 
 .intro-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
 }
 
@@ -899,6 +948,15 @@ function toNumber(value) {
 .context-text {
   color: #627389;
   font-size: 13px;
+}
+
+.source-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7f97;
+  font-size: 12px;
 }
 
 .chat-card {

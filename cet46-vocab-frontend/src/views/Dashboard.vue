@@ -40,6 +40,9 @@
           <strong>{{ overview.totalLearned }}</strong>
         </article>
       </div>
+      <p class="metric-note">
+        口径说明：已掌握=复习中点击“手到擒来”的单词；学习中=点击“完全陌生/有点模糊”且未“手到擒来”的单词；总学习=学习中+已掌握。
+      </p>
 
       <PressureAlert
         :pressure-index="overview.pressureIndex"
@@ -84,6 +87,7 @@ const loading = ref(true)
 
 const overview = computed(() => ({
   todayDue: dashboardStore.overview?.todayDue ?? 0,
+  learningCount: dashboardStore.overview?.learningCount ?? dashboardStore.overview?.todayDue ?? 0,
   streakDays: dashboardStore.overview?.streakDays ?? 0,
   masteredCount: dashboardStore.overview?.masteredCount ?? 0,
   totalLearned: dashboardStore.overview?.totalLearned ?? 0,
@@ -93,8 +97,7 @@ const overview = computed(() => ({
 }))
 
 const learningCount = computed(() => {
-  const value = overview.value.totalLearned - overview.value.masteredCount
-  return value > 0 ? value : 0
+  return overview.value.learningCount > 0 ? overview.value.learningCount : 0
 })
 
 const chartTotal = computed(() => {
@@ -108,7 +111,7 @@ onMounted(async () => {
   loading.value = true
   try {
     await Promise.all([
-      dashboardStore.fetchOverview(),
+      dashboardStore.fetchOverview(true),
       dashboardStore.fetchStats(30)
     ])
   } finally {
@@ -155,6 +158,13 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 360px 1fr;
   gap: 16px;
+}
+
+.metric-note {
+  margin: -6px 2px 0;
+  color: #8a98ab;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .chart-card,
