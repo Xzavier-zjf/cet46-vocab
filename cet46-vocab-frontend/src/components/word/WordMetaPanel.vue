@@ -61,7 +61,7 @@
         <transition name="fade">
           <div :key="`${genStatus}-explain`" class="tab-content">
             <LlmSkeleton v-if="showExplainLoading" />
-            <p v-else-if="smartExplain" class="line">{{ smartExplain }}</p>
+            <p v-else-if="displaySmartExplain" class="line explain-text">{{ displaySmartExplain }}</p>
             <p v-else-if="explainStatus === 'pending'" class="empty">智能解释生成中，请稍后</p>
             <p v-else class="empty">暂无智能解释，可点击“重试AI生成”或切换本地模型</p>
           </div>
@@ -90,11 +90,12 @@ const synonyms = computed(() => (Array.isArray(props.llmContent?.synonyms) ? pro
 const mnemonic = computed(() => props.llmContent?.mnemonic?.mnemonic || '')
 const rootAnalysis = computed(() => props.llmContent?.mnemonic?.rootAnalysis || '')
 const smartExplain = computed(() => props.llmContent?.smartExplain || '')
+const displaySmartExplain = computed(() => formatSmartExplain(smartExplain.value))
 const explainStatus = computed(() => props.llmContent?.explainStatus || 'pending')
 const hasSentence = computed(() => !!(sentenceEn.value || sentenceZh.value))
 const hasSynonyms = computed(() => synonyms.value.length > 0)
 const hasMnemonic = computed(() => !!(mnemonic.value || rootAnalysis.value))
-const showExplainLoading = computed(() => explainStatus.value === 'pending' && !smartExplain.value)
+const showExplainLoading = computed(() => explainStatus.value === 'pending' && !displaySmartExplain.value)
 const hasAnyContent = computed(() => hasSentence.value || hasSynonyms.value || hasMnemonic.value)
 
 watch(activeTab, (tab) => {
@@ -108,6 +109,75 @@ watch(activeTab, (tab) => {
     emit('need-generate', { section: 'explain' })
   }
 })
+
+function formatSmartExplain(raw) {
+  const text = (raw || '').trim()
+  if (!text) return ''
+
+  const parsed = tryParseExplainJson(text)
+  if (!parsed) {
+    if (!text.startsWith('{')) return text
+    const fallback = parseJsonLikeFallback(text)
+    return fallback || text
+  }
+
+  const lines = []
+  if (parsed.word) lines.push(`词条：${parsed.word}`)
+  if (Array.isArray(parsed.core_meanings) && parsed.core_meanings.length > 0) {
+    const meanings = parsed.core_meanings
+      .map((item) => item?.cn_explanation || item?.sense || '')
+      .filter(Boolean)
+      .slice(0, 3)
+    if (meanings.length) lines.push(`核心义项：${meanings.join('；')}`)
+  }
+  if (parsed.exam_usage?.note) lines.push(`考试用法：${parsed.exam_usage.note}`)
+  if (parsed.memory_tip) lines.push(`记忆提示：${parsed.memory_tip}`)
+  if (Array.isArray(parsed.confusables) && parsed.confusables.length > 0) {
+    const first = parsed.confusables[0] || {}
+    if (first.word || first.difference) {
+      lines.push(`易混词：${first.word || ''}${first.difference ? `：${first.difference}` : ''}`)
+    }
+  }
+  return lines.length ? lines.join('\n') : text
+}
+
+function tryParseExplainJson(text) {
+  try {
+    const obj = JSON.parse(text)
+    return obj && typeof obj === 'object' ? obj : null
+  } catch {
+    return null
+  }
+}
+
+function parseJsonLikeFallback(text) {
+  const lines = []
+  const word = pickOne(text, /"word"\s*:\s*"([^"]+)"/)
+  if (word) lines.push(`词条：${word}`)
+
+  const meaningMatches = [...text.matchAll(/"cn_explanation"\s*:\s*"([^"]+)"/g)]
+  const meanings = meaningMatches.map((m) => m[1]).filter(Boolean).slice(0, 3)
+  if (meanings.length) lines.push(`核心义项：${meanings.join('；')}`)
+
+  const examNote = pickOne(text, /"exam_usage"\s*:\s*\{[\s\S]*?"note"\s*:\s*"([^"]+)"/)
+  if (examNote) lines.push(`考试用法：${examNote}`)
+
+  const memoryTip = pickOne(text, /"memory_tip"\s*:\s*"([^"]+)"/)
+  if (memoryTip) lines.push(`记忆提示：${memoryTip}`)
+
+  const confuseWord = pickOne(text, /"confusables"\s*:\s*\[[\s\S]*?"word"\s*:\s*"([^"]+)"/)
+  const confuseDiff = pickOne(text, /"confusables"\s*:\s*\[[\s\S]*?"difference"\s*:\s*"([^"]+)"/)
+  if (confuseWord || confuseDiff) {
+    lines.push(`易混词：${confuseWord || ''}${confuseDiff ? `：${confuseDiff}` : ''}`)
+  }
+
+  return lines.join('\n')
+}
+
+function pickOne(text, regex) {
+  const match = text.match(regex)
+  return match && match[1] ? match[1] : ''
+}
 </script>
 
 <style scoped>
@@ -128,6 +198,10 @@ watch(activeTab, (tab) => {
   margin: 0 0 10px;
   color: #2C3E50;
   line-height: 1.7;
+}
+
+.explain-text {
+  white-space: pre-line;
 }
 
 .line.zh {

@@ -3,6 +3,7 @@ package com.cet46.vocab.llm;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.mapper.WordMetaMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +33,8 @@ public class LlmAsyncService {
     private static final Logger log = LoggerFactory.getLogger(LlmAsyncService.class);
     private static final String CACHE_PREFIX = "llm:content:";
     private static final String TIMEOUT_FALLBACK_TEXT = "\u5185\u5bb9\u751f\u6210\u8d85\u65f6\uff0c\u5df2\u663e\u793a\u57fa\u7840\u91ca\u4e49";
+    private static final Pattern FENCE_JSON_PATTERN = Pattern.compile("```(?:json)?\\s*([\\s\\S]*?)\\s*```", Pattern.CASE_INSENSITIVE);
+    private static final Pattern JSON_OBJECT_PATTERN = Pattern.compile("\\{[\\s\\S]*}");
 
     private final LlmCacheService llmCacheService;
     private final OllamaClient ollamaClient;
@@ -218,7 +221,8 @@ public class LlmAsyncService {
 
             String explain = llmCacheService.getCache(explainHash);
             if (!StringUtils.hasText(explain)) {
-                String prompt = buildExplainPrompt(wordBase);
+                String pos = StringUtils.hasText(wordMeta.getPos()) ? wordMeta.getPos() : parsePos(wordBase.chinese);
+                String prompt = buildExplainPrompt(wordBase, pos, resolveLevel(wordType), "");
                 explain = safeGenerate(prompt, normalizedProvider);
                 if (StringUtils.hasText(explain)) {
                     llmCacheService.setCache(explainHash, explain);
@@ -226,7 +230,7 @@ public class LlmAsyncService {
             }
 
             if (StringUtils.hasText(explain)) {
-                wordMeta.setAiExplain(toPlainText(explain, 800));
+                wordMeta.setAiExplain(normalizeExplainDisplay(explain));
                 wordMeta.setAiExplainStatus("full");
             } else {
                 wordMeta.setAiExplainStatus("fallback");
@@ -536,10 +540,10 @@ public class LlmAsyncService {
                 {
                   "word":"%s",
                   "synonyms":[
-                    {"synonym":"...", "difference":"中文说明", "example":"English example"}
+                    {"synonym":"...", "difference":"Chinese explanation", "example":"English example"}
                   ],
-                  "mnemonic":"中文助记",
-                  "root_analysis":"可为空"
+                  "mnemonic":"Chinese memory tip",
+                  "root_analysis":"optional"
                 }
                 word=%s
                 phonetic=%s
@@ -554,20 +558,135 @@ public class LlmAsyncService {
         );
     }
 
-    private String buildExplainPrompt(WordBase wordBase) {
-        return """
-                请为英语单词生成面向中国 CET4/6 学习者的智能解释，返回纯文本中文，控制在120字以内，包含：
-                1) 核心含义
-                2) 常见使用场景
-                3) 一个易错点提醒
-                单词：%s
-                音标：%s
-                参考中文释义：%s
-                """.formatted(
-                defaultString(wordBase.english),
-                defaultString(wordBase.phonetic),
-                defaultString(wordBase.chinese)
-        );
+    private String buildExplainPrompt(WordBase wordBase, String pos, String level, String context) {
+        return PromptTemplate.SMART_EXPLAIN_JSON
+                .replace("{{word}}", defaultString(wordBase.english))
+                .replace("{{phonetic}}", defaultString(wordBase.phonetic))
+                .replace("{{pos}}", defaultString(pos))
+                .replace("{{level}}", defaultString(level))
+                .replace("{{context}}", defaultString(context))
+                .replace("{{chinese}}", defaultString(wordBase.chinese));
+    }
+
+    private String resolveLevel(String wordType) {
+        if ("cet6".equalsIgnoreCase(wordType)) {
+            return "六级";
+        }
+        if ("cet4".equalsIgnoreCase(wordType)) {
+            return "四级";
+        }
+        return "";
+    }
+
+    private String normalizeExplainDisplay(String rawExplain) {
+        JsonNode node = parseJsonNode(rawExplain);
+        if (node == null) {
+            return toPlainText(rawExplain, 800);
+        }
+        StringBuilder sb = new StringBuilder();
+        appendIfPresent(sb, getText(node, "word"), "词条：");
+
+        JsonNode meanings = node.get("core_meanings");
+        if (meanings != null && meanings.isArray() && !meanings.isEmpty()) {
+            List<String> lines = new ArrayList<>();
+            int count = 0;
+            for (JsonNode meaning : meanings) {
+                if (meaning == null || !meaning.isObject() || count >= 3) {
+                    continue;
+                }
+                String sense = getText(meaning, "sense");
+                String cn = getText(meaning, "cn_explanation");
+                String line = StringUtils.hasText(sense) && StringUtils.hasText(cn)
+                        ? sense + "：" + cn
+                        : (StringUtils.hasText(cn) ? cn : sense);
+                if (StringUtils.hasText(line)) {
+                    lines.add(line);
+                    count++;
+                }
+            }
+            if (!lines.isEmpty()) {
+                appendIfPresent(sb, String.join("；", lines), "核心义项：");
+            }
+        }
+
+        JsonNode examUsage = node.get("exam_usage");
+        if (examUsage != null && examUsage.isObject()) {
+            appendIfPresent(sb, getText(examUsage, "note"), "考试用法：");
+        }
+        appendIfPresent(sb, getText(node, "memory_tip"), "记忆提示：");
+
+        JsonNode confusables = node.get("confusables");
+        if (confusables != null && confusables.isArray() && !confusables.isEmpty()) {
+            JsonNode first = confusables.get(0);
+            if (first != null && first.isObject()) {
+                String word = getText(first, "word");
+                String difference = getText(first, "difference");
+                if (StringUtils.hasText(word) || StringUtils.hasText(difference)) {
+                    appendIfPresent(sb, defaultString(word) + (StringUtils.hasText(difference) ? "：" + difference : ""), "易混词：");
+                }
+            }
+        }
+        String normalized = sb.toString().trim();
+        if (StringUtils.hasText(normalized)) {
+            return normalized;
+        }
+        return toPlainText(rawExplain, 800);
+    }
+
+    private JsonNode parseJsonNode(String content) {
+        if (!StringUtils.hasText(content)) {
+            return null;
+        }
+        String trimmed = content.trim();
+        List<String> candidates = new ArrayList<>();
+        candidates.add(trimmed);
+
+        Matcher fenceMatcher = FENCE_JSON_PATTERN.matcher(trimmed);
+        if (fenceMatcher.find()) {
+            candidates.add(fenceMatcher.group(1).trim());
+        }
+
+        Matcher objectMatcher = JSON_OBJECT_PATTERN.matcher(trimmed);
+        if (objectMatcher.find()) {
+            candidates.add(objectMatcher.group());
+        }
+
+        for (String candidate : candidates) {
+            try {
+                JsonNode root = objectMapper.readTree(candidate);
+                if (root != null && root.isObject()) {
+                    return root;
+                }
+            } catch (Exception ignore) {
+                // Try next candidate.
+            }
+        }
+        return null;
+    }
+
+    private String getText(JsonNode node, String key) {
+        if (node == null) {
+            return null;
+        }
+        JsonNode value = node.get(key);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        String text = value.asText();
+        if (!StringUtils.hasText(text) || "null".equalsIgnoreCase(text.trim())) {
+            return null;
+        }
+        return text.trim();
+    }
+
+    private void appendIfPresent(StringBuilder sb, String value, String prefix) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        if (sb.length() > 0) {
+            sb.append('\n');
+        }
+        sb.append(prefix).append(value.trim());
     }
 
     private WordMeta ensureWordMetaForExplain(Long wordId, String wordType, String style, String english) {
@@ -773,4 +892,3 @@ public class LlmAsyncService {
     private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
-

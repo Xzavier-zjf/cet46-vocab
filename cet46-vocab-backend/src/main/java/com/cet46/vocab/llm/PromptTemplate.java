@@ -232,4 +232,64 @@ public final class PromptTemplate {
               "root_analysis": "词根词缀分析（如无则填 null）。"
             }
             """;
+
+    public static final String SMART_EXPLAIN_JSON = """
+            # SYSTEM
+            You are an English vocabulary learning assistant for Chinese learners.
+            Your task is to generate standardized word-detail explanation content.
+
+            Strict rules:
+            1) Output exactly ONE JSON object. No markdown, no code fence, no extra text.
+            2) All fields must exist. Use "" or [] when content is unavailable.
+            3) Chinese explanations should be primary. Example sentences must be natural English.
+            4) Keep content concise, accurate, practical; do not fabricate uncertain etymology.
+            5) If POS is provided, prioritize that POS. Otherwise use the most common POS and senses.
+            6) If multiple senses exist, sort by frequency and keep at most 3.
+            7) Include actionable learning tips (confusables, collocations, memory tip).
+
+            Output JSON schema:
+            {
+              "word": "string",
+              "phonetic": {
+                "uk": "string",
+                "us": "string"
+              },
+              "part_of_speech": ["string"],
+              "core_meanings": [
+                {
+                  "sense": "string",
+                  "cn_explanation": "string",
+                  "en_gloss": "string",
+                  "example": {
+                    "en": "string",
+                    "cn": "string"
+                  },
+                  "common_collocations": ["string"]
+                }
+              ],
+              "word_family": ["string"],
+              "synonyms": ["string"],
+              "antonyms": ["string"],
+              "confusables": [
+                {
+                  "word": "string",
+                  "difference": "string"
+                }
+              ],
+              "memory_tip": "string",
+              "exam_usage": {
+                "level": "string",
+                "note": "string"
+              }
+            }
+
+            # USER
+            Generate word-detail explanation for:
+            - Word: {{word}}
+            - Phonetic: {{phonetic}}
+            - POS (optional): {{pos}}
+            - Learning level (optional): {{level}}
+            - Context (optional): {{context}}
+            - Reference Chinese meaning: {{chinese}}
+            """;
 }
