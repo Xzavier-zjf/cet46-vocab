@@ -61,7 +61,13 @@
         <el-button text class="back-setup-btn" @click="backToSetup">返回设置</el-button>
       </div>
 
-      <h3 class="word">{{ currentQuestion?.english || '-' }}</h3>
+      <div class="word-row">
+        <h3 class="word">{{ currentQuestion?.english || '-' }}</h3>
+        <div class="speak-actions">
+          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'uk')">🔊 英音</button>
+          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'us')">🔊 美音</button>
+        </div>
+      </div>
       <p class="phonetic">{{ currentQuestion?.phonetic || '' }}</p>
 
       <div v-if="isChoiceMode" class="choice-grid">
@@ -133,6 +139,7 @@ import { Loading } from '@element-plus/icons-vue'
 import { generateQuiz, submitQuiz } from '@/api/quiz'
 import { useUserStore } from '@/stores/user'
 import { getToken } from '@/utils/token'
+import { speakWord } from '@/utils/speech'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -424,6 +431,14 @@ const goHome = () => {
   router.push('/dashboard')
 }
 
+const handleSpeak = (word, accent) => {
+  const result = speakWord(word, accent)
+  if (result.ok) return
+  if (result.reason === 'unsupported') {
+    ElMessage.warning('当前浏览器不支持语音播放')
+  }
+}
+
 watch(snapshot, persistSession, { deep: true })
 
 onMounted(() => {
@@ -562,6 +577,29 @@ onMounted(() => {
   margin: 8px 0 6px;
   color: #1a2b4a;
   font-size: 34px;
+}
+
+.word-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.speak-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-speak {
+  border: 1px solid #d7e1ee;
+  background: #fff;
+  color: #4e6485;
+  border-radius: 12px;
+  font-size: 12px;
+  padding: 2px 8px;
+  cursor: pointer;
 }
 
 .phonetic {

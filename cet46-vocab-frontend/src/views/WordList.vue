@@ -38,7 +38,11 @@
     <el-table v-loading="loading" :data="tableData" class="word-table" border>
       <el-table-column label="英文单词" min-width="200">
         <template #default="scope">
-          <button class="word-link" @click="goDetail(scope.row)">{{ scope.row.english }}</button>
+          <div class="word-cell">
+            <button class="word-link" @click="goDetail(scope.row)">{{ scope.row.english }}</button>
+            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'uk')">🔊英</button>
+            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'us')">🔊美</button>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="音标" prop="phonetic" min-width="160" />
@@ -81,6 +85,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
+import { speakWord } from '@/utils/speech'
 
 const router = useRouter()
 const route = useRoute()
@@ -238,6 +243,14 @@ const onKeywordClear = () => {
 
 const resetKeywordSearch = () => onKeywordClear()
 
+const handleSpeak = (word, accent) => {
+  const result = speakWord(word, accent)
+  if (result.ok) return
+  if (result.reason === 'unsupported') {
+    ElMessage.warning('当前浏览器不支持语音播放')
+  }
+}
+
 const goDetail = (row) => {
   router.push({
     path: `/words/${row.wordType}/${row.wordId}`,
@@ -372,6 +385,22 @@ onUnmounted(() => {
 
 .word-link:hover {
   text-decoration: underline;
+}
+
+.word-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.quick-speak {
+  border: 1px solid #d7e1ee;
+  background: #fff;
+  color: #4e6485;
+  border-radius: 12px;
+  font-size: 12px;
+  padding: 1px 6px;
+  cursor: pointer;
 }
 
 .learning-tag {

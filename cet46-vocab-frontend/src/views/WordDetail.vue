@@ -23,6 +23,8 @@
           <h1 class="word">{{ detail.english || '-' }}</h1>
           <div class="meta-inline">
             <span class="phonetic">{{ detail.phonetic || '' }}</span>
+            <el-button text size="small" class="speak-btn" @click="handleSpeak('uk')">🔊 英音</el-button>
+            <el-button text size="small" class="speak-btn" @click="handleSpeak('us')">🔊 美音</el-button>
             <el-tag v-if="detail.pos" size="small" effect="plain">{{ detail.pos }}</el-tag>
           </div>
         </div>
@@ -75,6 +77,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import WordMetaPanel from '@/components/word/WordMetaPanel.vue'
+import { speakWord } from '@/utils/speech'
 
 const route = useRoute()
 const router = useRouter()
@@ -165,6 +168,14 @@ const goAskAssistant = () => {
       chinese: detail.chinese || ''
     }
   })
+}
+
+const handleSpeak = (accent) => {
+  const result = speakWord(detail.english, accent)
+  if (result.ok) return
+  if (result.reason === 'unsupported') {
+    ElMessage.warning('当前浏览器不支持语音播放')
+  }
 }
 
 const applyData = (data) => {
@@ -461,6 +472,11 @@ onUnmounted(() => {
 .phonetic {
   color: #8896a8;
   font-size: 18px;
+}
+
+.speak-btn {
+  padding: 0 4px;
+  color: #4a6285;
 }
 
 .learn-btn {

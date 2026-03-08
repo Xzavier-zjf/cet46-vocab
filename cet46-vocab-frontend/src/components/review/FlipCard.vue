@@ -1,8 +1,14 @@
-<template>
+﻿<template>
   <div class="flip-wrap" @click="$emit('flip')">
     <div class="flip-inner" :class="{ flipped: isFlipped }">
       <section class="card-face card-front">
-        <h2 class="word">{{ word?.english || '-' }}</h2>
+        <div class="word-row">
+          <h2 class="word">{{ word?.english || '-' }}</h2>
+          <div class="speak-actions">
+            <button class="speak-btn" @click.stop="handleSpeak('uk')">🔊 英</button>
+            <button class="speak-btn" @click.stop="handleSpeak('us')">🔊 美</button>
+          </div>
+        </div>
         <p class="phonetic">{{ word?.phonetic || '' }}</p>
         <p class="hint">点击翻转查看释义</p>
       </section>
@@ -17,6 +23,8 @@
 
 <script setup>
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
+import { speakWord } from '@/utils/speech'
 
 defineEmits(['flip'])
 
@@ -32,6 +40,14 @@ const exampleSentence = computed(() => {
     ''
   )
 })
+
+const handleSpeak = (accent) => {
+  const result = speakWord(props.word?.english, accent)
+  if (result.ok) return
+  if (result.reason === 'unsupported') {
+    ElMessage.warning('当前浏览器不支持语音播放')
+  }
+}
 </script>
 
 <style scoped>
@@ -72,12 +88,34 @@ const exampleSentence = computed(() => {
   text-align: center;
 }
 
+.word-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .word {
   margin: 0;
   color: #1A2B4A;
   font-size: 32px;
   line-height: 1.2;
   font-weight: 700;
+}
+
+.speak-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speak-btn {
+  border: 1px solid #d9e1ec;
+  background: #fff;
+  border-radius: 14px;
+  color: #4f6587;
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
 }
 
 .phonetic {
