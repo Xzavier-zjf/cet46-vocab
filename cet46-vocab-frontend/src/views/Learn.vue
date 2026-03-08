@@ -1,13 +1,13 @@
-<template>
+﻿<template>
   <section class="learn-page">
     <section class="control-card">
       <div class="title-row">
-        <h2>今日学习</h2>
-        <el-button text @click="loadWords">刷新</el-button>
+        <h2>浠婃棩瀛︿範</h2>
+        <el-button text @click="loadWords">鍒锋柊</el-button>
       </div>
 
       <div class="control-row">
-        <span class="label">词库</span>
+        <span class="label">璇嶅簱</span>
         <el-radio-group v-model="wordType" @change="loadWords">
           <el-radio-button value="cet4">CET4</el-radio-button>
           <el-radio-button value="cet6">CET6</el-radio-button>
@@ -15,14 +15,14 @@
       </div>
 
       <div class="summary-row">
-        <span>每日目标 {{ dailyTarget }} 个</span>
-        <span>学习中 {{ learningCount }} 个</span>
-        <span>已完成 {{ completedCount }} 个</span>
+        <span>姣忔棩鐩爣 {{ dailyTarget }} 涓</span>
+        <span>瀛︿範涓?{{ learningCount }} 涓</span>
+        <span>宸插畬鎴?{{ completedCount }} 涓</span>
       </div>
     </section>
 
     <section v-loading="loading" class="list-card">
-      <div v-if="!loading && words.length === 0" class="empty-tip">暂无可学习单词</div>
+      <div v-if="!loading && words.length === 0" class="empty-tip">鏆傛棤鍙涔犲崟璇</div>
 
       <div v-for="item in words" :key="`${item.wordType}:${item.wordId}`" class="word-item">
         <div class="word-main">
@@ -32,10 +32,10 @@
         </div>
 
         <div class="word-actions">
-          <span v-if="item.isCompleted" class="completed-tag">已完成学习</span>
-          <span v-else-if="item.isLearning" class="learning-tag">学习中</span>
-          <el-button v-else size="small" :loading="item.adding" @click="addToLearn(item)">加入学习</el-button>
-          <el-button text @click="goDetail(item)">学习详情</el-button>
+          <span v-if="item.isCompleted" class="completed-tag">宸插畬鎴愬涔</span>
+          <span v-else-if="item.isLearning" class="learning-tag">瀛︿範涓</span>
+          <el-button v-else size="small" :loading="item.adding" @click="addToLearn(item)">鍔犲叆瀛︿範</el-button>
+          <el-button text @click="goDetail(item)">瀛︿範璇︽儏</el-button>
         </div>
       </div>
     </section>
@@ -93,7 +93,7 @@ const loadWords = async () => {
     const list = Array.isArray(res?.data?.list) ? res.data.list : []
     words.value = mapWordStatus(list)
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '加载学习词失败')
+    ElMessage.error(error?.businessMessage || error?.message || '加载今日学习失败')
   } finally {
     loading.value = false
   }
@@ -103,11 +103,11 @@ const addToLearn = async (item) => {
   const currentStatus = normalizeProgressStatus(item)
   if (item.adding) return
   if (currentStatus === 'LEARNING') {
-    ElMessage.info('该单词已在学习中')
+    ElMessage.info('璇ュ崟璇嶅凡鍦ㄥ涔犱腑')
     return
   }
   if (currentStatus === 'COMPLETED') {
-    ElMessage.info('该单词已完成学习')
+    ElMessage.info('璇ュ崟璇嶅凡瀹屾垚瀛︿範')
     return
   }
 
@@ -123,7 +123,7 @@ const addToLearn = async (item) => {
     ElMessage.success('已加入学习计划')
     await loadWords()
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
+    ElMessage.error(error?.businessMessage || error?.message || '鍔犲叆瀛︿範澶辫触')
   } finally {
     item.adding = false
   }
@@ -224,7 +224,7 @@ onMounted(async () => {
 }
 
 .learning-tag {
-  color: #8bafd4;
+  color: #b79434;
   font-weight: 700;
 }
 
@@ -255,3 +255,6 @@ onMounted(async () => {
   }
 }
 </style>
+
+
+

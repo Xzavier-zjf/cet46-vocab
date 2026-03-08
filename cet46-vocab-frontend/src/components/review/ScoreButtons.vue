@@ -1,25 +1,25 @@
-<template>
+﻿<template>
   <div class="score-row">
     <button
       class="score-btn btn-1"
       :disabled="disabled"
       @click="$emit('score', 1)"
     >
-      完全陌生
+      瀹屽叏闄岀敓
     </button>
     <button
       class="score-btn btn-3"
       :disabled="disabled"
       @click="$emit('score', 3)"
     >
-      有点模糊
+      鏈夌偣妯＄硦
     </button>
     <button
       class="score-btn btn-5"
       :disabled="disabled"
       @click="$emit('score', 5)"
     >
-      手到擒来
+      鎵嬪埌鎿掓潵
     </button>
   </div>
 </template>
@@ -62,11 +62,11 @@ defineEmits(['score'])
 }
 
 .btn-3 {
-  background: #4A6FA5;
+  background: #b79434;
 }
 
 .btn-5 {
-  background: #8BAFD4;
+  background: #d3b262;
 }
 
 .score-btn:disabled {
@@ -82,3 +82,4 @@ defineEmits(['score'])
   }
 }
 </style>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="word-list-page">
     <div class="filter-bar">
       <el-radio-group v-model="query.type" @change="onFilterChange">
@@ -207,7 +207,7 @@ const loadList = async () => {
     pagination.total = total
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') {
-      ElMessage.error(error?.businessMessage || error?.message || '加载词库失败')
+      ElMessage.error(error?.businessMessage || error?.message || '鍔犺浇璇嶅簱澶辫触')
     }
   } finally {
     if (!listController?.signal?.aborted) {
@@ -249,7 +249,7 @@ const handleSpeak = (word, accent) => {
   const result = speakWord(word, accent)
   if (result.ok) return
   if (result.reason === 'unsupported') {
-    ElMessage.warning('当前浏览器不支持语音播放')
+    ElMessage.warning('褰撳墠娴忚鍣ㄤ笉鏀寔璇煶鎾斁')
   }
 }
 
@@ -264,11 +264,11 @@ const addToLearn = async (row) => {
   const currentStatus = normalizeProgressStatus(row)
   if (row.adding) return
   if (currentStatus === 'LEARNING') {
-    ElMessage.info('该单词已在学习中')
+    ElMessage.info('璇ュ崟璇嶅凡鍦ㄥ涔犱腑')
     return
   }
   if (currentStatus === 'COMPLETED') {
-    ElMessage.info('该单词已完成学习')
+    ElMessage.info('璇ュ崟璇嶅凡瀹屾垚瀛︿範')
     return
   }
 
@@ -283,7 +283,7 @@ const addToLearn = async (row) => {
     ElMessage.success('已加入学习计划')
     await loadList()
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
+    ElMessage.error(error?.businessMessage || error?.message || '鍔犲叆瀛︿範澶辫触')
   } finally {
     row.adding = false
   }
@@ -301,12 +301,12 @@ const retryPendingBatch = async () => {
     })
     const queued = Number(res?.data?.queued || 0)
     if (queued > 0) {
-      ElMessage.success(`已提交 ${queued} 个单词的AI重试任务`)
+      ElMessage.success(`宸叉彁浜?${queued} 涓崟璇嶇殑AI閲嶈瘯浠诲姟`)
     } else {
-      ElMessage.info('当前没有可重试的 pending 单词')
+      ElMessage.info('褰撳墠娌℃湁鍙噸璇曠殑 pending 鍗曡瘝')
     }
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '批量重试失败')
+    ElMessage.error(error?.businessMessage || error?.message || '鎵归噺閲嶈瘯澶辫触')
   } finally {
     retryPendingLoading.value = false
   }
@@ -399,7 +399,7 @@ onUnmounted(() => {
 .quick-speak {
   border: 1px solid #d7e1ee;
   background: #fff;
-  color: #4e6485;
+  color: #7b6730;
   border-radius: 12px;
   font-size: 12px;
   padding: 1px 6px;
@@ -407,7 +407,7 @@ onUnmounted(() => {
 }
 
 .learning-tag {
-  color: #8bafd4;
+  color: #b79434;
   font-weight: 600;
 }
 
@@ -449,3 +449,4 @@ onUnmounted(() => {
   }
 }
 </style>
+

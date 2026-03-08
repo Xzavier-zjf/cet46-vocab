@@ -1,21 +1,42 @@
-<template>
+﻿<template>
   <section class="admin-page">
-    <h1>词库导入与回滚</h1>
+    <section class="admin-hero">
+      <div>
+        <h1>词库运营仪表盘</h1>
+        <p>统一管理导入、回滚与 AI 解释生成任务。</p>
+      </div>
+      <div class="hero-metrics">
+        <article class="metric-item">
+          <span>批次数</span>
+          <strong>{{ batches.length }}</strong>
+        </article>
+        <article class="metric-item">
+          <span>已回滚</span>
+          <strong>{{ rolledBackCount }}</strong>
+        </article>
+        <article class="metric-item">
+          <span>最近批次</span>
+          <strong>{{ latestBatchId }}</strong>
+        </article>
+      </div>
+    </section>
 
-    <el-card class="card" shadow="never">
-      <template #header>导入文件</template>
+    <el-card class="panel-card" shadow="never">
+      <template #header>
+        <div class="panel-title">导入文件</div>
+      </template>
       <div class="row">
         <el-select v-model="wordType" class="field">
           <el-option label="CET4" value="cet4" />
           <el-option label="CET6" value="cet6" />
         </el-select>
         <el-upload :auto-upload="false" :show-file-list="true" :on-change="handleFileChange" :limit="1" accept=".csv,text/csv">
-          <el-button>选择CSV文件</el-button>
+          <el-button>选择 CSV 文件</el-button>
         </el-upload>
         <el-button :loading="previewLoading" @click="submitPreview">导入预览</el-button>
         <el-button type="primary" :loading="importLoading" @click="submitImport">确认导入</el-button>
       </div>
-      <p class="hint">先点“导入预览”校验，再点“确认导入”。支持 `id,english,sent,chinese` 或 `english,sent,chinese`。</p>
+      <p class="hint">建议先预览后导入。支持列：`id,english,sent,chinese` 或 `english,sent,chinese`。</p>
       <div v-if="previewResult" class="result">
         <p>预览结果：新增 {{ previewResult.inserted }}，更新 {{ previewResult.updated }}，跳过 {{ previewResult.skipped }}</p>
         <el-table v-if="Array.isArray(previewResult.samples) && previewResult.samples.length" :data="previewResult.samples" size="small">
@@ -31,13 +52,15 @@
       </div>
     </el-card>
 
-    <el-card class="card" shadow="never">
-      <template #header>导入批次回滚</template>
+    <el-card class="panel-card" shadow="never">
+      <template #header>
+        <div class="panel-title">导入批次回滚</div>
+      </template>
       <div class="row">
         <el-button :loading="batchLoading" @click="loadBatches">刷新批次</el-button>
       </div>
       <el-table :data="batches" size="small">
-        <el-table-column prop="batch_id" label="批次ID" min-width="220" />
+        <el-table-column prop="batch_id" label="批次 ID" min-width="220" />
         <el-table-column prop="word_type" label="词库" width="90" />
         <el-table-column prop="inserted_count" label="新增" width="80" />
         <el-table-column prop="updated_count" label="更新" width="80" />
@@ -58,8 +81,10 @@
       </el-table>
     </el-card>
 
-    <el-card class="card" shadow="never">
-      <template #header>智能解释生成</template>
+    <el-card class="panel-card" shadow="never">
+      <template #header>
+        <div class="panel-title">智能解释生成</div>
+      </template>
       <div class="row">
         <el-select v-model="style" class="field">
           <el-option label="故事风格" value="story" />
@@ -68,7 +93,7 @@
         </el-select>
         <el-select v-model="provider" class="field">
           <el-option label="本地模型" value="local" />
-          <el-option label="云端API" value="cloud" />
+          <el-option label="云端 API" value="cloud" />
         </el-select>
         <el-input-number v-model="limit" :min="1" :max="500" />
         <el-button type="primary" :loading="explainLoading" @click="generateExplainAll">批量生成解释</el-button>
@@ -79,7 +104,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/api/request'
 
@@ -102,6 +127,13 @@ const rollbackBatchId = ref('')
 const explainLoading = ref(false)
 const missingLoading = ref(false)
 
+const rolledBackCount = computed(() => batches.value.filter((b) => b?.status === 'ROLLED_BACK').length)
+const latestBatchId = computed(() => {
+  const first = batches.value[0]?.batch_id
+  if (!first) return '-'
+  return String(first).slice(0, 8)
+})
+
 const handleFileChange = (file) => {
   selectedFile.value = file?.raw || null
 }
@@ -115,7 +147,7 @@ const buildFormData = () => {
 
 const submitPreview = async () => {
   if (!selectedFile.value) {
-    ElMessage.warning('请先选择CSV文件')
+    ElMessage.warning('请先选择 CSV 文件')
     return
   }
   previewLoading.value = true
@@ -133,7 +165,7 @@ const submitPreview = async () => {
 
 const submitImport = async () => {
   if (!selectedFile.value) {
-    ElMessage.warning('请先选择CSV文件')
+    ElMessage.warning('请先选择 CSV 文件')
     return
   }
   importLoading.value = true
@@ -166,7 +198,7 @@ const rollbackBatch = async (batchId) => {
   rollbackBatchId.value = batchId
   try {
     const res = await request.post('/admin/word-bank/rollback', { batchId })
-    ElMessage.success(`回滚完成：${res?.data?.rolledBack || 0} 条`)
+    ElMessage.success(`回滚完成，${res?.data?.rolledBack || 0} 条`)
     await loadBatches()
   } finally {
     rollbackLoading.value = false
@@ -211,14 +243,70 @@ onMounted(async () => {
 
 <style scoped>
 .admin-page {
-  padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
 
-.card {
-  border-radius: 12px;
+.admin-hero {
+  background: linear-gradient(120deg, #1a2b4a 0%, #243f68 100%);
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+  color: #ebf1fb;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+}
+
+.admin-hero h1 {
+  margin: 0;
+  color: #fff;
+}
+
+.admin-hero p {
+  margin: 8px 0 0;
+  color: #cfd9ea;
+  font-size: 13px;
+}
+
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-item {
+  min-width: 90px;
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+
+.metric-item span {
+  font-size: 12px;
+  color: #dce5f4;
+}
+
+.metric-item strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff4d2;
+  font-size: 20px;
+}
+
+.panel-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.panel-title {
+  font-weight: 700;
+  color: #1a2b4a;
 }
 
 .row {
@@ -245,5 +333,10 @@ onMounted(async () => {
   margin-top: 8px;
   color: #b91c1c;
 }
-</style>
 
+@media (max-width: 900px) {
+  .admin-hero {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

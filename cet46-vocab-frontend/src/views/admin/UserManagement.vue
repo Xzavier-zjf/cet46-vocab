@@ -1,8 +1,31 @@
-<template>
+﻿<template>
   <section class="admin-page">
-    <h1>用户管理</h1>
+    <section class="admin-hero">
+      <div>
+        <h1>用户管理仪表盘</h1>
+        <p>统一查看用户规模、角色分布与账号维护操作。</p>
+      </div>
+      <div class="hero-metrics">
+        <article class="metric-item">
+          <span>用户总数</span>
+          <strong>{{ total }}</strong>
+        </article>
+        <article class="metric-item">
+          <span>当前页管理员</span>
+          <strong>{{ adminCountInPage }}</strong>
+        </article>
+        <article class="metric-item">
+          <span>当前页云端模型</span>
+          <strong>{{ cloudProviderCount }}</strong>
+        </article>
+      </div>
+    </section>
 
-    <el-card class="card" shadow="never">
+    <el-card class="panel-card" shadow="never">
+      <template #header>
+        <div class="panel-title">用户检索与维护</div>
+      </template>
+
       <div class="toolbar">
         <el-input
           v-model="keyword"
@@ -16,7 +39,7 @@
       </div>
 
       <el-table :data="rows" v-loading="loading" size="small">
-        <el-table-column prop="id" label="用户ID" min-width="180" />
+        <el-table-column prop="id" label="用户 ID" min-width="180" />
         <el-table-column prop="username" label="用户名" min-width="140" />
         <el-table-column prop="nickname" label="昵称" min-width="140" />
         <el-table-column label="角色" width="140">
@@ -60,7 +83,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/api/request'
 
@@ -70,6 +93,9 @@ const rows = ref([])
 const total = ref(0)
 const page = ref(1)
 const size = ref(10)
+
+const adminCountInPage = computed(() => rows.value.filter((item) => item?.role === 'ADMIN').length)
+const cloudProviderCount = computed(() => rows.value.filter((item) => item?.llmProvider === 'cloud').length)
 
 const loadUsers = async () => {
   loading.value = true
@@ -152,11 +178,70 @@ onMounted(async () => {
 
 <style scoped>
 .admin-page {
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.card {
-  border-radius: 12px;
+.admin-hero {
+  background: linear-gradient(120deg, #1a2b4a 0%, #243f68 100%);
+  border: 1px solid rgba(201, 168, 76, 0.45);
+  border-radius: var(--radius-card);
+  padding: 18px 20px;
+  box-shadow: var(--shadow-card);
+  color: #ebf1fb;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+}
+
+.admin-hero h1 {
+  margin: 0;
+  color: #fff;
+}
+
+.admin-hero p {
+  margin: 8px 0 0;
+  color: #cfd9ea;
+  font-size: 13px;
+}
+
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-item {
+  min-width: 100px;
+  border: 1px solid rgba(201, 168, 76, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+}
+
+.metric-item span {
+  font-size: 12px;
+  color: #dce5f4;
+}
+
+.metric-item strong {
+  display: block;
+  margin-top: 4px;
+  color: #fff4d2;
+  font-size: 20px;
+}
+
+.panel-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+.panel-title {
+  font-weight: 700;
+  color: #1a2b4a;
 }
 
 .toolbar {
@@ -173,5 +258,19 @@ onMounted(async () => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+  .admin-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    flex-wrap: wrap;
+  }
+
+  .keyword {
+    width: 100%;
+  }
 }
 </style>

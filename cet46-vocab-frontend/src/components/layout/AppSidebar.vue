@@ -1,8 +1,8 @@
 <template>
-  <aside class="sidebar">
-    <div class="logo">CET词库</div>
+  <header class="top-nav">
+    <div class="brand">CET词库</div>
 
-    <nav class="menu">
+    <nav class="menu-scroll">
       <RouterLink
         v-for="item in menuItems"
         :key="item.path"
@@ -17,10 +17,22 @@
       </RouterLink>
     </nav>
 
-    <div class="footer">
-      <el-button class="logout-btn" text @click="handleLogout">退出登录</el-button>
+    <div class="actions">
+      <span class="nickname">{{ displayName }}</span>
+      <el-dropdown trigger="click" @command="onCommand">
+        <div class="user-trigger">
+          <el-avatar :size="30" :src="userStore.avatar || undefined">{{ avatarText }}</el-avatar>
+          <el-icon><ArrowDown /></el-icon>
+        </div>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+            <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
     </div>
-  </aside>
+  </header>
 </template>
 
 <script setup>
@@ -37,7 +49,8 @@ import {
   User,
   Upload,
   UserFilled,
-  ChatDotRound
+  ChatDotRound,
+  ArrowDown
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
@@ -46,6 +59,9 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
+
+const displayName = computed(() => userStore.nickname || '同学')
+const avatarText = computed(() => (displayName.value || '同').slice(0, 1))
 
 const menuItems = computed(() => {
   if (userStore.role === 'ADMIN') {
@@ -85,13 +101,18 @@ const resolveMenuPath = (path) => {
   }
 }
 
-const handleLogout = async () => {
+const onCommand = async (command) => {
+  if (command === 'profile') {
+    router.push('/profile')
+    return
+  }
+  if (command !== 'logout') return
   try {
     if (userStore.token) {
       await logout()
     }
   } catch {
-    ElMessage.warning('退出请求失败，已执行本地退出')
+    ElMessage.warning('登出请求失败，已执行本地退出')
   } finally {
     userStore.clearUserInfo()
     router.push('/login')
@@ -100,88 +121,105 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-.sidebar {
-  width: 220px;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: #1a2b4a;
-  color: #fff;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+.top-nav {
+  height: 64px;
   position: sticky;
   top: 0;
-  flex-shrink: 0;
-  overflow-y: auto;
+  z-index: 1200;
+  display: grid;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: #1a2b4a;
+  border-bottom: 1px solid rgba(201, 168, 76, 0.4);
 }
 
-.logo {
-  height: 68px;
+.brand {
+  color: #f7f9fc;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.menu-scroll {
   display: flex;
   align-items: center;
-  padding: 0 24px;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: 1px;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  padding-bottom: 2px;
 }
 
-.menu {
-  flex: 1;
-  padding: 12px 0;
+.menu-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.menu-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
 }
 
 .menu-item {
-  position: relative;
-  height: 48px;
-  margin: 2px 10px;
-  padding: 0 14px;
-  display: flex;
+  height: 38px;
+  padding: 0 12px;
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   border-radius: 10px;
-  color: #fff;
+  color: #d8e1ee;
   text-decoration: none;
-  transition: background-color 0.2s ease;
+  white-space: nowrap;
+  transition: all 0.2s ease;
 }
 
 .menu-item:hover {
+  color: #ffffff;
   background: rgba(255, 255, 255, 0.08);
 }
 
 .menu-item.active {
-  background: rgba(201, 168, 76, 0.15);
-}
-
-.menu-item.active::before {
-  content: '';
-  position: absolute;
-  left: -10px;
-  top: 0;
-  width: 4px;
-  height: 100%;
-  background: #c9a84c;
-  border-radius: 0 4px 4px 0;
+  color: #fff9e8;
+  background: rgba(201, 168, 76, 0.2);
+  box-shadow: inset 0 -2px 0 #c9a84c;
 }
 
 .menu-icon {
-  font-size: 18px;
+  font-size: 16px;
 }
 
-.footer {
-  padding: 16px 14px 20px;
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.logout-btn {
-  width: 100%;
-  justify-content: center;
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  height: 40px;
+.nickname {
+  color: #e8edf6;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-.logout-btn:hover {
-  color: #fff;
-  border-color: #c9a84c;
-  background: rgba(201, 168, 76, 0.15);
+.user-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #d8e1ee;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .top-nav {
+    grid-template-columns: 120px minmax(0, 1fr);
+  }
+
+  .menu-scroll {
+    overflow-x: auto;
+  }
+
+  .actions {
+    display: none;
+  }
 }
 </style>

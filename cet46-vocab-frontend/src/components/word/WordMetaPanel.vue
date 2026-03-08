@@ -267,7 +267,7 @@ function pickArrayValues(rawArrayText) {
 }
 
 .line.ex {
-  color: #4A6FA5;
+  color: #8a6b20;
   font-style: italic;
 }
 
@@ -293,3 +293,4 @@ function pickArrayValues(rawArrayText) {
   opacity: 0;
 }
 </style>
+

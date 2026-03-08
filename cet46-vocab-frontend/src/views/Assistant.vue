@@ -55,6 +55,52 @@
                 重试该词AI生成
               </el-button>
             </div>
+            <div class="msg-tools">
+              <template v-if="msg.role === 'user'">
+                <el-button class="tool-btn" text size="small" @click="copyMessageContent(msg.content)">⧉ 复制</el-button>
+                <el-button class="tool-btn" text size="small" @click="editUserMessage(msg.id)">✎ 编辑</el-button>
+                <el-button
+                  v-if="isLatestUserMessage(msg)"
+                  class="tool-btn danger"
+                  text
+                  size="small"
+                  @click="deleteUserMessage(msg.id)"
+                >
+                  ⌫ 删除
+                </el-button>
+              </template>
+              <template v-else>
+                <el-button class="tool-btn" text size="small" @click="copyMessageContent(msg.content)">⧉ 复制</el-button>
+                <el-button
+                  class="tool-btn"
+                  :class="{ active: msg.feedback === 'up' }"
+                  text
+                  size="small"
+                  @click="setAssistantFeedback(msg.id, 'up')"
+                >
+                  ↑ 点赞
+                </el-button>
+                <el-button
+                  class="tool-btn"
+                  :class="{ active: msg.feedback === 'down' }"
+                  text
+                  size="small"
+                  @click="setAssistantFeedback(msg.id, 'down')"
+                >
+                  ↓ 点踩
+                </el-button>
+                <el-button
+                  class="tool-btn"
+                  text
+                  size="small"
+                  :disabled="loading || regeneratingMessageId === String(msg.id)"
+                  :loading="regeneratingMessageId === String(msg.id)"
+                  @click="regenerateAssistantMessage(msg.id)"
+                >
+                  ↻ 重新生成
+                </el-button>
+              </template>
+            </div>
           </div>
         </div>
         <div v-if="loading" class="msg assistant">
@@ -234,7 +280,9 @@ const router = useRouter()
 const STORAGE_KEY = 'assistant:sessions:v3'
 const LEGACY_STORAGE_KEY = 'assistant:sessions:v2'
 const AUTO_ASK_KEY = 'assistant:auto-ask:v1'
+const ACTIVE_SESSION_KEY = 'assistant:active-session:v1'
 const loading = ref(false)
+const regeneratingMessageId = ref('')
 const learnActionLoading = ref(false)
 const llmActionLoading = ref(false)
 const question = ref('')
@@ -274,6 +322,13 @@ const activeSession = computed(() => sessions.value.find((s) => s.id === activeS
 const activeContext = computed(() => activeSession.value?.context || {})
 const hasWordAction = computed(() => !!activeContext.value.wordId && !!activeContext.value.wordType)
 const messages = computed(() => activeSession.value?.messages || [])
+const latestUserMessageId = computed(() => {
+  const list = messages.value
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    if (list[i]?.role === 'user') return list[i].id
+  }
+  return null
+})
 const filteredSortedSessions = computed(() => {
   const keyword = historyKeyword.value.trim().toLowerCase()
   const sortFactor = historySort.value === 'asc' ? 1 : -1
@@ -328,7 +383,6 @@ const quickQuestions = computed(() => {
     '四六级阅读和写作如何分配时间？'
   ]
 })
-
 initSession()
 
 function initSession() {
@@ -341,9 +395,15 @@ function initSession() {
     createNewSession(true)
     return
   }
-  const sorted = sortForDefaultActivate(sessions.value.filter((s) => s.hasInteraction))
+  const storedActiveId = loadActiveSessionId()
+  if (storedActiveId && sessions.value.some((s) => s.id === storedActiveId)) {
+    activeSessionId.value = storedActiveId
+    return
+  }
+  const sorted = sortForDefaultActivate(sessions.value)
   if (sorted.length > 0) {
     activeSessionId.value = sorted[0].id
+    persistState()
     return
   }
   createNewSession(true)
@@ -359,12 +419,10 @@ function sortForDefaultActivate(list) {
 
 function createNewSession(forceGlobal, options = {}) {
   const now = Date.now()
-  sessions.value = sessions.value.filter((s) => s && s.hasInteraction)
+  sessions.value = sessions.value.filter((s) => s && (s.hasInteraction || s.id === activeSessionId.value))
   const context = forceGlobal ? {} : { ...routeWordContext.value }
   const title = context.word ? `单词：${context.word}` : `会话 ${new Date(now).toLocaleString()}`
-  const greeting = context.word
-    ? `你好，围绕单词 ${context.word}，你可以问我“怎么记”“如何造句”“和哪个词易混”。`
-    : '你好，我是你的四六级学习助手。'
+  const greeting = '你好，我是你的四六级学习助手。'
   const session = {
     id: String(now),
     title,
@@ -535,6 +593,128 @@ function buildHistory() {
     .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }))
 }
 
+function buildHistoryFrom(sourceMessages, endExclusive) {
+  return sourceMessages
+    .slice(0, endExclusive)
+    .slice(-6)
+    .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }))
+}
+
+function isLatestUserMessage(msg) {
+  return msg?.role === 'user' && msg?.id === latestUserMessageId.value
+}
+
+async function copyMessageContent(content) {
+  const text = String(content || '')
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制')
+  } catch {
+    const area = document.createElement('textarea')
+    area.value = text
+    area.style.position = 'fixed'
+    area.style.opacity = '0'
+    document.body.appendChild(area)
+    area.select()
+    document.execCommand('copy')
+    document.body.removeChild(area)
+    ElMessage.success('已复制')
+  }
+}
+
+function editUserMessage(messageId) {
+  const session = activeSession.value
+  if (!session) return
+  const target = session.messages.find((m) => m.id === messageId && m.role === 'user')
+  if (!target) return
+  ElMessageBox.prompt('编辑该条用户消息', '编辑消息', {
+    inputValue: String(target.content || ''),
+    inputPlaceholder: '请输入消息内容',
+    confirmButtonText: '保存',
+    cancelButtonText: '取消'
+  }).then(({ value }) => {
+    const next = String(value || '').trim()
+    if (!next) {
+      ElMessage.warning('消息内容不能为空')
+      return
+    }
+    target.content = next
+    const sessionRef = sessions.value.find((s) => s.id === activeSessionId.value)
+    if (sessionRef) sessionRef.updatedAt = Date.now()
+    persistState()
+    ElMessage.success('已更新消息')
+  }).catch(() => {})
+}
+
+function deleteUserMessage(messageId) {
+  const session = activeSession.value
+  if (!session) return
+  const target = session.messages.find((m) => m.id === messageId)
+  if (!target || !isLatestUserMessage(target)) return
+  session.messages = session.messages.filter((m) => m.id !== messageId)
+  session.updatedAt = Date.now()
+  persistState()
+  ElMessage.success('已删除该消息')
+}
+
+function setAssistantFeedback(messageId, feedback) {
+  const session = activeSession.value
+  if (!session) return
+  const target = session.messages.find((m) => m.id === messageId && m.role === 'assistant')
+  if (!target) return
+  target.feedback = target.feedback === feedback ? '' : feedback
+  session.updatedAt = Date.now()
+  persistState()
+}
+
+async function regenerateAssistantMessage(messageId) {
+  if (loading.value) return
+  const session = activeSession.value
+  if (!session) return
+  const list = session.messages || []
+  const aiIdx = list.findIndex((m) => m.id === messageId && m.role === 'assistant')
+  if (aiIdx < 0) return
+  let userIdx = -1
+  for (let i = aiIdx - 1; i >= 0; i -= 1) {
+    if (list[i]?.role === 'user') {
+      userIdx = i
+      break
+    }
+  }
+  if (userIdx < 0) {
+    ElMessage.warning('找不到可重生成的用户提问')
+    return
+  }
+
+  const userQuestion = String(list[userIdx]?.content || '').trim()
+  if (!userQuestion) {
+    ElMessage.warning('用户提问为空，无法重生成')
+    return
+  }
+
+  const history = buildHistoryFrom(list, userIdx + 1)
+  regeneratingMessageId.value = String(messageId)
+  try {
+    const res = await assistantChat({
+      question: userQuestion,
+      answerMode: answerMode.value,
+      wordContext: activeContext.value?.word ? activeContext.value : null,
+      history
+    })
+    const answer = normalizeAnswer(res?.data?.answer) || '我暂时没有整理出有效回答，你可以稍后再试。'
+    list[aiIdx].content = answer
+    list[aiIdx].feedback = ''
+    session.updatedAt = Date.now()
+    persistState()
+    ElMessage.success('已重新生成回答')
+  } catch (error) {
+    ElMessage.warning(error?.businessMessage || error?.message || '重新生成失败，请稍后重试')
+  } finally {
+    regeneratingMessageId.value = ''
+  }
+}
+
 async function handleAddWordToLearn() {
   if (!hasWordAction.value || learnActionLoading.value) return
   learnActionLoading.value = true
@@ -581,7 +761,7 @@ function normalizeAnswer(raw) {
   try {
     const obj = JSON.parse(value)
     if (obj && typeof obj === 'object' && typeof obj.answer === 'string') {
-      return obj.answer.trim()
+      return markdownToPlainText(obj.answer)
     }
   } catch {
     // Ignore.
@@ -589,10 +769,26 @@ function normalizeAnswer(raw) {
   if (value.startsWith('{') && value.includes('"answer"')) {
     const m = value.match(/"answer"\s*:\s*"([\s\S]*?)"/)
     if (m && m[1]) {
-      return m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim()
+      return markdownToPlainText(m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim())
     }
   }
-  return value
+  return markdownToPlainText(value)
+}
+
+function markdownToPlainText(input) {
+  const text = String(input || '')
+  if (!text) return ''
+  return text
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, '').trim())
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+\.\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 function handleMoreCommand(command, session) {
@@ -650,7 +846,6 @@ function confirmRename() {
     return
   }
   session.title = title
-  session.updatedAt = Date.now()
   renameDialogVisible.value = false
   persistState()
 }
@@ -661,14 +856,19 @@ function copySession(session) {
     ...session,
     id: String(now),
     title: `${session.title || '会话'} - 副本`,
-    updatedAt: now,
+    updatedAt: Number(session.updatedAt || now),
     hasInteraction: true,
     messages: (session.messages || []).map((m, i) => ({
       ...m,
       id: now + i + 1
     }))
   }
-  sessions.value.unshift(copied)
+  const sourceIdx = sessions.value.findIndex((s) => s.id === session.id)
+  if (sourceIdx >= 0) {
+    sessions.value.splice(sourceIdx + 1, 0, copied)
+  } else {
+    sessions.value.push(copied)
+  }
   activeSessionId.value = copied.id
   persistState()
   ElMessage.success('已复制会话')
@@ -766,7 +966,6 @@ function confirmGroupAssign() {
     return
   }
   session.groupId = groupTargetId.value || null
-  session.updatedAt = Date.now()
   groupDialogVisible.value = false
   persistState()
   ElMessage.success('分组已更新')
@@ -803,6 +1002,15 @@ function loadAutoAskSetting() {
   }
 }
 
+function loadActiveSessionId() {
+  try {
+    const value = localStorage.getItem(ACTIVE_SESSION_KEY)
+    return value ? String(value) : ''
+  } catch {
+    return ''
+  }
+}
+
 function persistAutoAskSetting() {
   localStorage.setItem(AUTO_ASK_KEY, autoAskEnabled.value ? '1' : '0')
 }
@@ -831,7 +1039,6 @@ function normalizeState(raw) {
         ? s.hasInteraction
         : s.messages.some((m) => m?.role === 'user')
     }))
-    .filter((s) => s.hasInteraction)
     .slice(0, 100)
 
   const groupsNormalized = groupList
@@ -843,7 +1050,7 @@ function normalizeState(raw) {
 
 function persistState() {
   const stableSessions = sessions.value
-    .filter((s) => s && s.hasInteraction)
+    .filter((s) => s)
     .slice(0, 100)
 
   const activeExists = stableSessions.some((s) => s.id === activeSessionId.value)
@@ -860,6 +1067,7 @@ function persistState() {
     groups: groups.value.slice(0, 100)
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId.value || '')
 }
 
 function formatTime(ts) {
@@ -897,9 +1105,10 @@ function toNumber(value) {
 
 <style scoped>
 .assistant-page {
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .intro-card,
@@ -911,6 +1120,7 @@ function toNumber(value) {
 }
 
 .intro-card {
+  position: static;
   padding: 16px 18px;
 }
 
@@ -925,6 +1135,7 @@ function toNumber(value) {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .intro-card h2 {
@@ -967,6 +1178,7 @@ function toNumber(value) {
   min-height: 320px;
   max-height: 58vh;
   overflow: auto;
+  padding-top: 8px;
   padding-right: 6px;
 }
 
@@ -983,6 +1195,10 @@ function toNumber(value) {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.msg.user .msg-body {
+  align-items: flex-end;
 }
 
 .bubble {
@@ -1007,6 +1223,41 @@ function toNumber(value) {
   display: flex;
   gap: 8px;
   padding-left: 4px;
+}
+
+.msg-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 4px;
+  min-height: 24px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s ease;
+}
+
+.msg:hover .msg-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.msg.user .msg-tools {
+  justify-content: flex-end;
+  padding-left: 0;
+  padding-right: 4px;
+}
+
+.tool-btn {
+  --el-color-primary: #8a6a2f;
+  color: #61748d;
+}
+
+.tool-btn.active {
+  color: #8a6a2f;
+}
+
+.tool-btn.danger {
+  color: #b4503d;
 }
 
 .quick-ask {
@@ -1144,6 +1395,11 @@ function toNumber(value) {
 }
 
 @media (max-width: 768px) {
+  .msg-tools {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
   .intro-head {
     flex-direction: column;
   }
@@ -1162,3 +1418,7 @@ function toNumber(value) {
   }
 }
 </style>
+
+
+
+

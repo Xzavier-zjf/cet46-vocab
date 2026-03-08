@@ -143,7 +143,7 @@ const handleSpeak = (accent) => {
 
 .example {
   margin: 0;
-  color: #4A6FA5;
+  color: #8a6b20;
   font-size: 14px;
   font-style: italic;
   line-height: 1.8;
@@ -163,3 +163,4 @@ const handleSpeak = (accent) => {
   }
 }
 </style>
+

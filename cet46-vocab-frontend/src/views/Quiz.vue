@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="quiz-page">
     <section v-if="state === 'setup'" class="setup-card">
       <h2>模拟测验设置</h2>
@@ -32,18 +32,30 @@
       <el-button class="start-btn" :loading="state === 'loading'" @click="startQuiz">
         开始测验
       </el-button>
+
       <div class="history-card">
         <div class="history-title">测验历史</div>
         <div v-if="quizHistory.length" class="history-list">
-          <div v-for="item in quizHistory" :key="item.id" class="history-item">
+          <div
+            v-for="item in quizHistory"
+            :key="item.id"
+            class="history-item"
+            role="button"
+            tabindex="0"
+            @click="openHistoryDetail(item)"
+            @keyup.enter="openHistoryDetail(item)"
+          >
             <div class="history-line">
               <span class="history-time">{{ formatHistoryTime(item.finishedAt) }}</span>
               <span class="history-score">{{ item.correct }}/{{ item.total }}</span>
             </div>
             <div class="history-meta">
-              {{ item.wordType.toUpperCase() }} / {{ item.mode === 'choice' ? '选择题' : '填空题' }} / {{ item.count }}题
+              {{ String(item.wordType || '').toUpperCase() }} /
+              {{ item.mode === 'choice' ? '选择题' : '填空题' }} /
+              {{ item.count }} 题
               <span class="history-wrong">错题 {{ item.wrongCount }}</span>
             </div>
+            <div class="history-action">点击查看当次作答详情</div>
           </div>
         </div>
         <div v-else class="history-empty">暂无历史记录</div>
@@ -128,6 +140,42 @@
         <el-button @click="goHome">返回首页</el-button>
       </div>
     </section>
+
+    <el-dialog
+      v-model="historyDetailVisible"
+      title="测验历史详情"
+      width="860px"
+      append-to-body
+    >
+      <template v-if="historyDetailRecord">
+        <p class="history-detail-summary">
+          {{ formatHistoryTime(historyDetailRecord.finishedAt) }} ·
+          {{ String(historyDetailRecord.wordType || '').toUpperCase() }} ·
+          {{ historyDetailRecord.mode === 'choice' ? '选择题' : '填空题' }} ·
+          得分 {{ historyDetailRecord.correct }}/{{ historyDetailRecord.total }}
+        </p>
+
+        <el-table
+          v-if="Array.isArray(historyDetailRows) && historyDetailRows.length"
+          :data="historyDetailRows"
+          size="small"
+          max-height="420"
+        >
+          <el-table-column prop="index" label="#" width="60" />
+          <el-table-column prop="english" label="单词" min-width="140" />
+          <el-table-column prop="userAnswer" label="你的答案" min-width="180" />
+          <el-table-column prop="correctAnswer" label="正确答案" min-width="180" />
+          <el-table-column label="结果" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.isCorrect ? 'success' : 'danger'" effect="plain">
+                {{ row.isCorrect ? '正确' : '错误' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-else class="history-empty">该历史记录暂无题目级详情（旧版本记录）。</div>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -165,6 +213,8 @@ const questionStartAt = ref(0)
 const selectedAnswer = ref('')
 const fillAnswer = ref('')
 const quizHistory = ref([])
+const historyDetailVisible = ref(false)
+const historyDetailRecord = ref(null)
 
 const result = reactive({
   total: 0,
@@ -174,11 +224,11 @@ const result = reactive({
 
 const currentQuestion = computed(() => questions.value[currentIndex.value] || null)
 const isChoiceMode = computed(() => (currentQuestion.value?.mode || setup.mode) === 'choice')
-
 const currentExplanation = computed(() => {
   const q = currentQuestion.value || {}
   return q.llmSentence || q.exampleSentence || q.explanation || '暂无解析'
 })
+const historyDetailRows = computed(() => historyDetailRecord.value?.details || [])
 
 const getCorrectChoiceId = (q) => q?.correctId || ''
 
@@ -269,6 +319,42 @@ const formatHistoryTime = (value) => {
   return date.toLocaleString()
 }
 
+const normalizeAnswer = (value) => String(value || '').trim().toLowerCase()
+
+const resolveChoiceText = (question, choiceId) => {
+  if (!question || !Array.isArray(question.options)) return String(choiceId || '-')
+  const found = question.options.find((opt) => String(opt?.id || '') === String(choiceId || ''))
+  return found?.text || String(choiceId || '-')
+}
+
+const buildHistoryDetails = () => {
+  const answerMap = new Map(
+    answers.value
+      .filter((item) => item?.questionId)
+      .map((item) => [String(item.questionId), item.userAnswer])
+  )
+
+  return questions.value.map((question, idx) => {
+    const questionId = String(question?.questionId || '')
+    const mode = question?.mode || setup.mode
+    const userRaw = answerMap.get(questionId) ?? ''
+    const correctRaw = mode === 'choice' ? getCorrectChoiceId(question) : (question?.correctAnswer || '')
+    const userAnswer = mode === 'choice' ? resolveChoiceText(question, userRaw) : String(userRaw || '-')
+    const correctAnswer = mode === 'choice' ? resolveChoiceText(question, correctRaw) : String(correctRaw || '-')
+    const isCorrect = mode === 'choice'
+      ? String(userRaw || '') === String(correctRaw || '')
+      : normalizeAnswer(userRaw) === normalizeAnswer(correctRaw)
+
+    return {
+      index: idx + 1,
+      english: question?.english || '-',
+      userAnswer,
+      correctAnswer,
+      isCorrect
+    }
+  })
+}
+
 const pushHistoryRecord = () => {
   const record = {
     id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -278,10 +364,16 @@ const pushHistoryRecord = () => {
     count: questions.value.length,
     total: result.total,
     correct: result.correct,
-    wrongCount: Math.max(result.total - result.correct, 0)
+    wrongCount: Math.max(result.total - result.correct, 0),
+    details: buildHistoryDetails()
   }
   quizHistory.value = [record, ...quizHistory.value].slice(0, QUIZ_HISTORY_LIMIT)
   persistHistory()
+}
+
+const openHistoryDetail = (record) => {
+  historyDetailRecord.value = record || null
+  historyDetailVisible.value = true
 }
 
 const normalizeRestoredState = () => {
@@ -510,9 +602,15 @@ onMounted(() => {
 }
 
 .history-item {
+  cursor: pointer;
   border: 1px solid #e3e9f2;
   border-radius: 8px;
   padding: 8px 10px;
+}
+
+.history-item:hover {
+  border-color: #c9a84c;
+  background: #fffcf5;
 }
 
 .history-line {
@@ -536,6 +634,18 @@ onMounted(() => {
 
 .history-wrong {
   margin-left: 10px;
+}
+
+.history-action {
+  margin-top: 6px;
+  color: #8a6b20;
+  font-size: 12px;
+}
+
+.history-detail-summary {
+  margin: 0 0 10px;
+  color: #60728c;
+  font-size: 13px;
 }
 
 .history-empty {
@@ -670,7 +780,7 @@ onMounted(() => {
 
 .analysis p {
   margin: 0;
-  color: #4a6fa5;
+  color: #8a6b20;
   line-height: 1.7;
 }
 
@@ -724,3 +834,4 @@ onMounted(() => {
   }
 }
 </style>
+
