@@ -27,7 +27,18 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { House, Collection, Reading, Refresh, Edit, TrendCharts, User, Upload, UserFilled } from '@element-plus/icons-vue'
+import {
+  House,
+  Collection,
+  Reading,
+  Refresh,
+  Edit,
+  TrendCharts,
+  User,
+  Upload,
+  UserFilled,
+  ChatDotRound
+} from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { logout } from '@/api/auth'
 
@@ -51,6 +62,7 @@ const menuItems = computed(() => {
     { label: '词库浏览', path: '/words', icon: Collection },
     { label: '开始复习', path: '/review', icon: Refresh },
     { label: '模拟测验', path: '/quiz', icon: Edit },
+    { label: '学习助手', path: '/assistant', icon: ChatDotRound },
     { label: '学习统计', path: '/stats', icon: TrendCharts },
     { label: '我的资料', path: '/profile', icon: User }
   ]

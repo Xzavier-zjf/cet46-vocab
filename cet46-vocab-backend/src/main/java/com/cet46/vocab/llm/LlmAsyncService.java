@@ -220,8 +220,8 @@ public class LlmAsyncService {
             wordMetaMapper.updateById(wordMeta);
 
             String explain = llmCacheService.getCache(explainHash);
+            String pos = StringUtils.hasText(wordMeta.getPos()) ? wordMeta.getPos() : parsePos(wordBase.chinese);
             if (!StringUtils.hasText(explain)) {
-                String pos = StringUtils.hasText(wordMeta.getPos()) ? wordMeta.getPos() : parsePos(wordBase.chinese);
                 String prompt = buildExplainPrompt(wordBase, pos, resolveLevel(wordType), "");
                 explain = safeGenerate(prompt, normalizedProvider);
                 if (StringUtils.hasText(explain)) {
@@ -230,7 +230,7 @@ public class LlmAsyncService {
             }
 
             if (StringUtils.hasText(explain)) {
-                wordMeta.setAiExplain(normalizeExplainDisplay(explain));
+                wordMeta.setAiExplain(normalizeExplainDisplay(explain, pos));
                 wordMeta.setAiExplainStatus("full");
             } else {
                 wordMeta.setAiExplainStatus("fallback");
@@ -578,10 +578,21 @@ public class LlmAsyncService {
         return "";
     }
 
-    private String normalizeExplainDisplay(String rawExplain) {
+    private String normalizeExplainDisplay(String rawExplain, String pos) {
         JsonNode node = parseJsonNode(rawExplain);
         if (node == null) {
-            return toPlainText(rawExplain, 800);
+            String plain = toPlainText(rawExplain, 800);
+            if (!StringUtils.hasText(plain)) {
+                return null;
+            }
+            if (plain.contains("语法用法：")) {
+                return plain;
+            }
+            String fallbackGrammar = fallbackGrammarUsage(pos);
+            if (!StringUtils.hasText(fallbackGrammar)) {
+                return plain;
+            }
+            return plain + "\n语法用法：" + fallbackGrammar;
         }
         StringBuilder sb = new StringBuilder();
         appendIfPresent(sb, getText(node, "word"), "词条：");
@@ -614,6 +625,11 @@ public class LlmAsyncService {
             appendIfPresent(sb, getText(examUsage, "note"), "考试用法：");
         }
         appendIfPresent(sb, getText(node, "memory_tip"), "记忆提示：");
+        String grammarUsage = buildGrammarUsage(node.get("grammar_usage"));
+        if (!StringUtils.hasText(grammarUsage)) {
+            grammarUsage = fallbackGrammarUsage(pos);
+        }
+        appendIfPresent(sb, grammarUsage, "语法用法：");
 
         JsonNode confusables = node.get("confusables");
         if (confusables != null && confusables.isArray() && !confusables.isEmpty()) {
@@ -687,6 +703,79 @@ public class LlmAsyncService {
             sb.append('\n');
         }
         sb.append(prefix).append(value.trim());
+    }
+
+    private String buildGrammarUsage(JsonNode grammarNode) {
+        if (grammarNode == null || !grammarNode.isObject()) {
+            return null;
+        }
+        List<String> parts = new ArrayList<>();
+        String countability = getText(grammarNode, "countability");
+        if (StringUtils.hasText(countability)) {
+            parts.add(countability);
+        }
+        String verbPatterns = joinArray(grammarNode.get("verb_patterns"), 2);
+        if (StringUtils.hasText(verbPatterns)) {
+            parts.add("动词搭配: " + verbPatterns);
+        }
+        String structures = joinArray(grammarNode.get("common_structures"), 2);
+        if (StringUtils.hasText(structures)) {
+            parts.add("常见结构: " + structures);
+        }
+        String usageTip = getText(grammarNode, "usage_tip");
+        if (StringUtils.hasText(usageTip)) {
+            parts.add(usageTip);
+        }
+        if (parts.isEmpty()) {
+            return null;
+        }
+        return String.join("；", parts);
+    }
+
+    private String fallbackGrammarUsage(String pos) {
+        if (!StringUtils.hasText(pos)) {
+            return null;
+        }
+        String normalized = pos.toLowerCase();
+        if (normalized.contains("n")) {
+            return "注意可数/不可数与单复数变化，搭配冠词和数量词时优先确认名词属性。";
+        }
+        if (normalized.contains("v")) {
+            return "重点关注时态变化、及物/不及物和常见搭配结构（如动词+宾语/动词+to do）。";
+        }
+        if (normalized.contains("adj")) {
+            return "常见作定语或表语，注意与介词搭配及比较级/最高级变化。";
+        }
+        if (normalized.contains("adv")) {
+            return "常修饰动词或形容词，注意在句中的位置及与程度副词连用。";
+        }
+        return "结合词性关注句中成分位置与常见固定搭配。";
+    }
+
+    private String joinArray(JsonNode node, int limit) {
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return null;
+        }
+        List<String> values = new ArrayList<>();
+        int count = 0;
+        for (JsonNode item : node) {
+            if (count >= limit) {
+                break;
+            }
+            if (item == null || item.isNull()) {
+                continue;
+            }
+            String text = item.asText();
+            if (!StringUtils.hasText(text) || "null".equalsIgnoreCase(text.trim())) {
+                continue;
+            }
+            values.add(text.trim());
+            count++;
+        }
+        if (values.isEmpty()) {
+            return null;
+        }
+        return String.join(" / ", values);
     }
 
     private WordMeta ensureWordMetaForExplain(Long wordId, String wordType, String style, String english) {

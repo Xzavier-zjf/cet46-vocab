@@ -67,6 +67,17 @@
           </div>
         </transition>
       </el-tab-pane>
+
+      <el-tab-pane label="语法用法" name="grammar">
+        <transition name="fade">
+          <div :key="`${genStatus}-grammar`" class="tab-content">
+            <LlmSkeleton v-if="showGrammarLoading" />
+            <p v-else-if="displayGrammarUsage" class="line explain-text">{{ displayGrammarUsage }}</p>
+            <p v-else-if="explainStatus === 'pending'" class="empty">语法用法生成中，请稍后</p>
+            <p v-else class="empty">暂无语法用法，可点击“重试AI生成”</p>
+          </div>
+        </transition>
+      </el-tab-pane>
     </el-tabs>
   </section>
 </template>
@@ -91,11 +102,17 @@ const mnemonic = computed(() => props.llmContent?.mnemonic?.mnemonic || '')
 const rootAnalysis = computed(() => props.llmContent?.mnemonic?.rootAnalysis || '')
 const smartExplain = computed(() => props.llmContent?.smartExplain || '')
 const displaySmartExplain = computed(() => formatSmartExplain(smartExplain.value))
+const displayGrammarUsage = computed(() => {
+  const direct = (props.llmContent?.grammarUsage || '').trim()
+  if (direct) return direct
+  return extractPrefixedLine(displaySmartExplain.value, '语法用法：')
+})
 const explainStatus = computed(() => props.llmContent?.explainStatus || 'pending')
 const hasSentence = computed(() => !!(sentenceEn.value || sentenceZh.value))
 const hasSynonyms = computed(() => synonyms.value.length > 0)
 const hasMnemonic = computed(() => !!(mnemonic.value || rootAnalysis.value))
 const showExplainLoading = computed(() => explainStatus.value === 'pending' && !displaySmartExplain.value)
+const showGrammarLoading = computed(() => explainStatus.value === 'pending' && !displayGrammarUsage.value)
 const hasAnyContent = computed(() => hasSentence.value || hasSynonyms.value || hasMnemonic.value)
 
 watch(activeTab, (tab) => {
@@ -107,6 +124,9 @@ watch(activeTab, (tab) => {
   }
   if (tab === 'explain' && !smartExplain.value) {
     emit('need-generate', { section: 'explain' })
+  }
+  if (tab === 'grammar' && !displayGrammarUsage.value) {
+    emit('need-generate', { section: 'grammar' })
   }
 })
 
@@ -132,6 +152,8 @@ function formatSmartExplain(raw) {
   }
   if (parsed.exam_usage?.note) lines.push(`考试用法：${parsed.exam_usage.note}`)
   if (parsed.memory_tip) lines.push(`记忆提示：${parsed.memory_tip}`)
+  const grammarUsage = buildGrammarUsage(parsed.grammar_usage)
+  if (grammarUsage) lines.push(`语法用法：${grammarUsage}`)
   if (Array.isArray(parsed.confusables) && parsed.confusables.length > 0) {
     const first = parsed.confusables[0] || {}
     if (first.word || first.difference) {
@@ -165,6 +187,17 @@ function parseJsonLikeFallback(text) {
   const memoryTip = pickOne(text, /"memory_tip"\s*:\s*"([^"]+)"/)
   if (memoryTip) lines.push(`记忆提示：${memoryTip}`)
 
+  const countability = pickOne(text, /"grammar_usage"\s*:\s*\{[\s\S]*?"countability"\s*:\s*"([^"]+)"/)
+  const usageTip = pickOne(text, /"grammar_usage"\s*:\s*\{[\s\S]*?"usage_tip"\s*:\s*"([^"]+)"/)
+  const patterns = [...text.matchAll(/"verb_patterns"\s*:\s*\[([\s\S]*?)\]/g)]
+  const structures = [...text.matchAll(/"common_structures"\s*:\s*\[([\s\S]*?)\]/g)]
+  const grammarParts = []
+  if (countability) grammarParts.push(countability)
+  if (patterns.length) grammarParts.push(`动词搭配: ${pickArrayValues(patterns[0][1]).slice(0, 2).join(' / ')}`)
+  if (structures.length) grammarParts.push(`常见结构: ${pickArrayValues(structures[0][1]).slice(0, 2).join(' / ')}`)
+  if (usageTip) grammarParts.push(usageTip)
+  if (grammarParts.length) lines.push(`语法用法：${grammarParts.join('；')}`)
+
   const confuseWord = pickOne(text, /"confusables"\s*:\s*\[[\s\S]*?"word"\s*:\s*"([^"]+)"/)
   const confuseDiff = pickOne(text, /"confusables"\s*:\s*\[[\s\S]*?"difference"\s*:\s*"([^"]+)"/)
   if (confuseWord || confuseDiff) {
@@ -177,6 +210,31 @@ function parseJsonLikeFallback(text) {
 function pickOne(text, regex) {
   const match = text.match(regex)
   return match && match[1] ? match[1] : ''
+}
+
+function extractPrefixedLine(text, prefix) {
+  if (!text) return ''
+  const line = text.split('\n').find((item) => item.startsWith(prefix))
+  return line ? line.replace(prefix, '').trim() : ''
+}
+
+function buildGrammarUsage(grammar) {
+  if (!grammar || typeof grammar !== 'object') return ''
+  const parts = []
+  if (grammar.countability) parts.push(grammar.countability)
+  if (Array.isArray(grammar.verb_patterns) && grammar.verb_patterns.length) {
+    parts.push(`动词搭配: ${grammar.verb_patterns.slice(0, 2).join(' / ')}`)
+  }
+  if (Array.isArray(grammar.common_structures) && grammar.common_structures.length) {
+    parts.push(`常见结构: ${grammar.common_structures.slice(0, 2).join(' / ')}`)
+  }
+  if (grammar.usage_tip) parts.push(grammar.usage_tip)
+  return parts.join('；')
+}
+
+function pickArrayValues(rawArrayText) {
+  if (!rawArrayText) return []
+  return [...rawArrayText.matchAll(/"([^"]+)"/g)].map((m) => m[1]).filter(Boolean)
 }
 </script>
 

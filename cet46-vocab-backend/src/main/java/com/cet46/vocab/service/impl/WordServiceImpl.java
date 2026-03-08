@@ -162,7 +162,7 @@ public class WordServiceImpl implements WordService {
                 ? wordMeta.getPos()
                 : PosParser.parse(wordBase.chinese);
 
-        WordDetailResponse.LlmContent llmContent = buildLlmContent(style, wordMeta, cloudUnavailable);
+        WordDetailResponse.LlmContent llmContent = buildLlmContent(style, wordMeta, cloudUnavailable, pos);
         WordDetailResponse.Progress progress = queryProgress(userId, wordId, wordType);
 
         WordDetailResponse response = WordDetailResponse.builder()
@@ -479,7 +479,7 @@ public class WordServiceImpl implements WordService {
         return STATUS_NOT_LEARNING;
     }
 
-    private WordDetailResponse.LlmContent buildLlmContent(String style, WordMeta wordMeta, boolean cloudUnavailable) {
+    private WordDetailResponse.LlmContent buildLlmContent(String style, WordMeta wordMeta, boolean cloudUnavailable, String pos) {
         if (wordMeta == null) {
             if (cloudUnavailable) {
                 return cloudUnavailableContent(style);
@@ -491,6 +491,7 @@ public class WordServiceImpl implements WordService {
                     .synonyms(Collections.emptyList())
                     .mnemonic(new WordDetailResponse.Mnemonic(null, null))
                     .smartExplain(null)
+                    .grammarUsage(null)
                     .explainStatus("pending")
                     .build();
         }
@@ -507,8 +508,46 @@ public class WordServiceImpl implements WordService {
                         wordMeta.getMnemonic(),
                         wordMeta.getRootAnalysis()))
                 .smartExplain(wordMeta.getAiExplain())
+                .grammarUsage(resolveGrammarUsage(wordMeta.getAiExplain(), pos))
                 .explainStatus(resolveExplainStatus(wordMeta))
                 .build();
+    }
+
+    private String resolveGrammarUsage(String explain, String pos) {
+        if (!StringUtils.hasText(explain)) {
+            return fallbackGrammarUsage(pos);
+        }
+        String[] lines = explain.split("\\R");
+        for (String line : lines) {
+            if (!StringUtils.hasText(line)) {
+                continue;
+            }
+            String trimmed = line.trim();
+            if (trimmed.startsWith("语法用法：")) {
+                return trimmed.substring("语法用法：".length()).trim();
+            }
+        }
+        return fallbackGrammarUsage(pos);
+    }
+
+    private String fallbackGrammarUsage(String pos) {
+        if (!StringUtils.hasText(pos)) {
+            return null;
+        }
+        String normalized = pos.toLowerCase();
+        if (normalized.contains("n")) {
+            return "注意可数/不可数、单复数及冠词搭配。";
+        }
+        if (normalized.contains("v")) {
+            return "关注时态变化及常见动词结构（及物/不及物、to do 或 doing）。";
+        }
+        if (normalized.contains("adj")) {
+            return "常作定语/表语，注意比较级和常见介词搭配。";
+        }
+        if (normalized.contains("adv")) {
+            return "通常修饰动词或形容词，注意句中位置。";
+        }
+        return "关注该词在句中成分位置与固定搭配。";
     }
 
     private List<WordDetailResponse.SynonymItem> parseSynonyms(String synonymsJson) {
@@ -793,6 +832,7 @@ public class WordServiceImpl implements WordService {
                 .synonyms(Collections.emptyList())
                 .mnemonic(new WordDetailResponse.Mnemonic(null, null))
                 .smartExplain(null)
+                .grammarUsage(null)
                 .explainStatus("fallback")
                 .build();
     }

@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
-const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/stats', '/profile', '/admin/users', '/admin']
+const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/assistant', '/stats', '/profile', '/admin/users', '/admin']
 
 const getMenuRoot = (path) => MENU_ROOTS.find((root) => path === root || path.startsWith(`${root}/`))
 
@@ -28,6 +28,7 @@ const routes = [
   { path: '/words/:type/:id', name: 'WordDetail', component: () => import('@/views/WordDetail.vue'), meta: { requiresAuth: true } },
   { path: '/review', name: 'Review', component: () => import('@/views/Review.vue'), meta: { requiresAuth: true } },
   { path: '/quiz', name: 'Quiz', component: () => import('@/views/Quiz.vue'), meta: { requiresAuth: true } },
+  { path: '/assistant', name: 'Assistant', component: () => import('@/views/Assistant.vue'), meta: { requiresAuth: true } },
   { path: '/stats', name: 'Statistics', component: () => import('@/views/Statistics.vue'), meta: { requiresAuth: true } },
   { path: '/profile', name: 'Profile', component: () => import('@/views/Profile.vue'), meta: { requiresAuth: true } },
   { path: '/admin', name: 'AdminDashboard', component: () => import('@/views/admin/AdminDashboard.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },

@@ -29,6 +29,13 @@
 
         <div class="action-group">
           <el-button
+            class="assistant-btn"
+            :disabled="invalidParam || emptyData"
+            @click="goAskAssistant"
+          >
+            问学习助手
+          </el-button>
+          <el-button
             class="learn-btn"
             :disabled="progressStatus !== 'NOT_LEARNING' || addLoading"
             :loading="addLoading"
@@ -89,6 +96,7 @@ const detail = reactive({
     synonyms: [],
     mnemonic: {},
     smartExplain: '',
+    grammarUsage: '',
     explainStatus: 'pending'
   },
   progress: {
@@ -144,6 +152,21 @@ const goBackToWords = () => {
   router.push('/words')
 }
 
+const goAskAssistant = () => {
+  router.push({
+    path: '/assistant',
+    query: {
+      from: route.fullPath,
+      wordId: detail.wordId || '',
+      wordType: detail.wordType || '',
+      word: detail.english || '',
+      phonetic: detail.phonetic || '',
+      pos: detail.pos || '',
+      chinese: detail.chinese || ''
+    }
+  })
+}
+
 const applyData = (data) => {
   detail.wordId = data?.wordId ?? null
   detail.wordType = data?.wordType || ''
@@ -151,7 +174,7 @@ const applyData = (data) => {
   detail.phonetic = data?.phonetic || ''
   detail.chinese = data?.chinese || ''
   detail.pos = data?.pos || ''
-  detail.llmContent = data?.llmContent || { genStatus: 'pending', sentence: {}, synonyms: [], mnemonic: {}, smartExplain: '', explainStatus: 'pending' }
+  detail.llmContent = data?.llmContent || { genStatus: 'pending', sentence: {}, synonyms: [], mnemonic: {}, smartExplain: '', grammarUsage: '', explainStatus: 'pending' }
   detail.progress = data?.progress || { isLearning: false, status: 'NOT_LEARNING' }
 }
 
@@ -276,7 +299,10 @@ const handleAddLearn = async () => {
 
 const handleRetryGenerate = async () => {
   if (retryLoading.value || invalidParam.value || emptyData.value) return
-  await triggerGenerateTask(true)
+  const contentTaskOk = await triggerGenerateTask(true)
+  if (contentTaskOk) {
+    await triggerExplainTask(false)
+  }
 }
 
 const triggerGenerateTask = async (showToast = false) => {
@@ -314,15 +340,18 @@ const handleNeedGenerate = async ({ section } = {}) => {
   const mnemonic = detail.llmContent?.mnemonic || {}
   const hasMnemonic = !!(mnemonic.mnemonic || mnemonic.rootAnalysis)
   const hasExplain = !!(detail.llmContent?.smartExplain)
+  const hasGrammar = !!(detail.llmContent?.grammarUsage)
+    || ((detail.llmContent?.smartExplain || '').includes('语法用法：'))
   if (section === 'synonym' && hasSynonyms) return
   if (section === 'mnemonic' && hasMnemonic) return
   if (section === 'explain' && hasExplain) return
+  if (section === 'grammar' && hasGrammar) return
 
   const now = Date.now()
   if (now - lastAutoTriggerAt.value < AUTO_TRIGGER_COOLDOWN_MS) return
   lastAutoTriggerAt.value = now
 
-  if (section === 'explain') {
+  if (section === 'explain' || section === 'grammar') {
     await triggerExplainTask()
     return
   }
@@ -334,7 +363,7 @@ const handleNeedGenerate = async ({ section } = {}) => {
   await triggerGenerateTask(false)
 }
 
-const triggerExplainTask = async () => {
+const triggerExplainTask = async (showWarn = true) => {
   try {
     await request.post('/word/llm/generate-explain', {
       wordId: Number(route.params.id),
@@ -347,7 +376,9 @@ const triggerExplainTask = async () => {
     }
     startPollingIfNeeded('pending')
   } catch (error) {
-    ElMessage.warning(error?.businessMessage || error?.message || '智能解释生成失败，请稍后重试')
+    if (showWarn) {
+      ElMessage.warning(error?.businessMessage || error?.message || '智能解释生成失败，请稍后重试')
+    }
   }
 }
 
@@ -447,6 +478,12 @@ onUnmounted(() => {
 .retry-btn {
   border-color: #1a2b4a;
   color: #1a2b4a;
+}
+
+.assistant-btn {
+  border-color: #c9a84c;
+  color: #6c5311;
+  background: #fffdf6;
 }
 
 .meaning-card {

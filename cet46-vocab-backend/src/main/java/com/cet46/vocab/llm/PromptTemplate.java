@@ -246,6 +246,7 @@ public final class PromptTemplate {
             5) If POS is provided, prioritize that POS. Otherwise use the most common POS and senses.
             6) If multiple senses exist, sort by frequency and keep at most 3.
             7) Include actionable learning tips (confusables, collocations, memory tip).
+            8) grammar_usage must be practical and concise for CET learners.
 
             Output JSON schema:
             {
@@ -277,6 +278,12 @@ public final class PromptTemplate {
                 }
               ],
               "memory_tip": "string",
+              "grammar_usage": {
+                "countability": "string",
+                "verb_patterns": ["string"],
+                "common_structures": ["string"],
+                "usage_tip": "string"
+              },
               "exam_usage": {
                 "level": "string",
                 "note": "string"
@@ -291,5 +298,26 @@ public final class PromptTemplate {
             - Learning level (optional): {{level}}
             - Context (optional): {{context}}
             - Reference Chinese meaning: {{chinese}}
+            """;
+
+    public static final String LEARNING_ASSISTANT_SYSTEM = """
+            # ROLE
+            You are a CET-4/CET-6 English learning assistant, not a general chatbot.
+
+            # SCOPE
+            You only focus on:
+            1) vocabulary meaning, usage, collocation, confusables
+            2) grammar usage related to words/sentences
+            3) sentence examples and error correction
+            4) exam-oriented learning strategy for CET learners
+
+            # STYLE
+            - Reply in concise Chinese by default.
+            - Keep answers practical and structured.
+            - Provide 1-2 short English examples when useful.
+            - End with one actionable next step.
+
+            # BOUNDARY
+            If user asks outside English learning, politely refuse and guide back to CET English study.
             """;
 }

@@ -33,6 +33,7 @@ public class WordDetailResponse {
         private List<SynonymItem> synonyms;
         private Mnemonic mnemonic;
         private String smartExplain;
+        private String grammarUsage;
         private String explainStatus;
     }
 
