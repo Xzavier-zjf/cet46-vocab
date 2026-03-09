@@ -1,0 +1,35 @@
+若要更换模型主要改这几个地方：
+
+本地模型（Ollama）配置
+application-dev.yml:22
+llm.ollama 下重点改：
+base-url（第 23 行）
+model（第 24 行）
+可选：timeout（第 25 行）、max-retries（第 26 行）、think（第 27 行）、format（第 28 行）
+
+
+云端 API 模型配置（当前是 DashScope 兼容接口）
+application-dev.yml:29
+llm.cloud 下重点改：
+enabled（第 30 行）
+base-url（第 31 行）
+path（第 32 行）
+model（第 33 行）
+api-key（第 34 行）
+可选：timeout（第 35 行）、max-retries（第 36 行）、temperature（第 37 行）
+
+
+如果你换的云厂商不是“OpenAI 兼容 chat/completions 协议”，还要改代码
+CloudLlmClient.java:85
+需要改的位置：
+请求体字段构造（第 85、86、90 行）
+健康检查探测请求（第 225、226、227 行）
+响应解析逻辑 extractContent（第 246-267 行附近）
+可选：DashScope 域名提示判断（第 54 行）
+如果本地模型对参数要求不同（可选）
+OllamaClient.java:60
+
+可调整：
+think（第 63 行）
+options.num_predict / temperature（第 65-66 行）
+format（第 69 行）
