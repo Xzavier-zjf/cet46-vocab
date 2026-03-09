@@ -132,7 +132,7 @@
           maxlength="500"
           show-word-limit
           placeholder="输入你的问题，例如：abandon 怎么记更快？"
-          @keydown.ctrl.enter.prevent="send()"
+          @keydown="handleComposerKeydown"
         />
         <div class="actions">
           <div class="actions-left">
@@ -538,6 +538,14 @@ function goBackToSource() {
 
 function sendQuickQuestion(content) {
   send(content)
+}
+
+function handleComposerKeydown(event) {
+  if (event.key !== 'Enter') return
+  if (event.shiftKey) return
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  send()
 }
 
 async function send(contentOverride = '', targetSessionId = '') {
