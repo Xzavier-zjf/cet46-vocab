@@ -41,10 +41,19 @@ public class OllamaClient {
 
     public String generatePlainText(String prompt, int numPredict) {
         int safeNumPredict = Math.max(64, numPredict);
-        return generateWithOptions(prompt, safeNumPredict, false);
+        return generateWithOptionsMeta(prompt, safeNumPredict, false).content();
+    }
+
+    public GenerationResult generatePlainTextWithMeta(String prompt, int numPredict) {
+        int safeNumPredict = Math.max(64, numPredict);
+        return generateWithOptionsMeta(prompt, safeNumPredict, false);
     }
 
     private String generateWithOptions(String prompt, int numPredict, boolean includeFormat) {
+        return generateWithOptionsMeta(prompt, numPredict, includeFormat).content();
+    }
+
+    private GenerationResult generateWithOptionsMeta(String prompt, int numPredict, boolean includeFormat) {
         String url = llmProperties.getBaseUrl() + "/api/generate";
 
         Map<String, Object> requestBody = new HashMap<>();
@@ -78,7 +87,7 @@ public class OllamaClient {
                 if (!StringUtils.hasText(content)) {
                     throw new LlmCallException("ollama response content is blank");
                 }
-                return content;
+                return new GenerationResult(content, isLengthTruncated(body));
             } catch (RuntimeException ex) {
                 lastException = ex;
             }
@@ -87,16 +96,25 @@ public class OllamaClient {
         throw new LlmCallException("ollama call failed", lastException);
     }
 
+    private boolean isLengthTruncated(Map<?, ?> body) {
+        Object doneReason = body.get("done_reason");
+        if (doneReason == null) {
+            return false;
+        }
+        String value = String.valueOf(doneReason).trim().toLowerCase(Locale.ROOT);
+        return "length".equals(value) || "max_tokens".equals(value);
+    }
+
     public CloudLlmHealthResponse healthCheck() {
         List<String> details = new ArrayList<>();
         String baseUrl = llmProperties.getBaseUrl();
         String model = llmProperties.getModel();
         boolean configured = StringUtils.hasText(baseUrl) && StringUtils.hasText(model);
         if (!StringUtils.hasText(baseUrl)) {
-            details.add("缺少 llm.ollama.base-url");
+            details.add("\u7F3A\u5C11 llm.ollama.base-url");
         }
         if (!StringUtils.hasText(model)) {
-            details.add("缺少 llm.ollama.model");
+            details.add("\u7F3A\u5C11 llm.ollama.model");
         }
 
         boolean dnsOk = false;
@@ -108,10 +126,10 @@ public class OllamaClient {
                     InetAddress.getByName(host);
                     dnsOk = true;
                 } else {
-                    details.add("base-url 未包含可解析 host");
+                    details.add("base-url \u672A\u5305\u542B\u53EF\u89E3\u6790 host");
                 }
             } catch (Exception ex) {
-                details.add("DNS 解析失败: " + ex.getMessage());
+                details.add("DNS \u89E3\u6790\u5931\u8D25: " + ex.getMessage());
             }
         }
 
@@ -124,23 +142,23 @@ public class OllamaClient {
                 latencyMs = System.currentTimeMillis() - start;
                 modelOk = "ok".equalsIgnoreCase(probe);
                 if (!modelOk) {
-                    details.add("本地模型未安装或模型名不匹配");
+                    details.add("\u672C\u5730\u6A21\u578B\u672A\u5B89\u88C5\u6216\u6A21\u578B\u540D\u4E0D\u5339\u914D");
                 }
             } catch (Exception ex) {
                 latencyMs = System.currentTimeMillis() - start;
-                details.add("本地模型调用失败: " + ex.getMessage());
+                details.add("\u672C\u5730\u6A21\u578B\u8C03\u7528\u5931\u8D25: " + ex.getMessage());
             }
         }
 
         String message;
         if (!configured) {
-            message = "本地模型配置不完整";
+            message = "\u672C\u5730\u6A21\u578B\u914D\u7F6E\u4E0D\u5B8C\u6574";
         } else if (!dnsOk) {
-            message = "本地服务连接失败";
+            message = "\u672C\u5730\u670D\u52A1\u8FDE\u63A5\u5931\u8D25";
         } else if (!modelOk) {
-            message = "本地模型不可用";
+            message = "\u672C\u5730\u6A21\u578B\u4E0D\u53EF\u7528";
         } else {
-            message = "本地模型连通正常";
+            message = "\u672C\u5730\u6A21\u578B\u8FDE\u901A\u6B63\u5E38";
         }
 
         return CloudLlmHealthResponse.builder()
@@ -197,5 +215,8 @@ public class OllamaClient {
         public LlmCallException(String message, Throwable cause) {
             super(message, cause);
         }
+    }
+
+    public record GenerationResult(String content, boolean truncated) {
     }
 }

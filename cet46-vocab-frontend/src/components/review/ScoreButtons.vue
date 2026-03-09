@@ -5,21 +5,21 @@
       :disabled="disabled"
       @click="$emit('score', 1)"
     >
-      瀹屽叏闄岀敓
+      完全陌生
     </button>
     <button
       class="score-btn btn-3"
       :disabled="disabled"
       @click="$emit('score', 3)"
     >
-      鏈夌偣妯＄硦
+      有点模糊
     </button>
     <button
       class="score-btn btn-5"
       :disabled="disabled"
       @click="$emit('score', 5)"
     >
-      鎵嬪埌鎿掓潵
+      轻松掌握
     </button>
   </div>
 </template>
@@ -43,9 +43,9 @@ defineEmits(['score'])
 
 .score-btn {
   height: 44px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 8px;
-  color: #fff;
+  color: #ffffff;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -58,20 +58,25 @@ defineEmits(['score'])
 }
 
 .btn-1 {
-  background: #1A2B4A;
+  background: var(--color-primary);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .btn-3 {
-  background: #b79434;
+  background: var(--color-warning);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .btn-5 {
-  background: #d3b262;
+  background: var(--color-accent);
+  color: #1a2b4a;
+  border-color: rgba(26, 43, 74, 0.24);
 }
 
 .score-btn:disabled {
-  background: #C7CED8;
-  color: #f7f9fc;
+  background: var(--color-border);
+  color: var(--color-muted);
+  border-color: var(--color-border);
   cursor: not-allowed;
   transform: none;
 }

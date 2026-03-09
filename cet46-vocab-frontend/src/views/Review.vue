@@ -35,7 +35,7 @@
       </div>
 
       <div v-if="isError" class="error-area">
-        <el-button type="primary" :color="'#1A2B4A'" @click="onRetry">
+        <el-button class="retry-btn" type="primary" @click="onRetry">
           重试提交
         </el-button>
       </div>
@@ -174,7 +174,7 @@ onUnmounted(() => {
 .state-panel {
   width: 100%;
   min-height: 320px;
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 16px;
   box-shadow: var(--shadow-card);
   padding: 36px;
@@ -190,22 +190,22 @@ onUnmounted(() => {
 
 .loading-icon {
   font-size: 34px;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
 }
 
 .empty-icon {
   font-size: 42px;
-  color: #C9A84C;
+  color: var(--color-accent);
 }
 
 .center h3 {
   margin: 14px 0 8px;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
 }
 
 .center p {
   margin: 0;
-  color: #6C7B8E;
+  color: var(--color-muted);
 }
 
 .card-flow {
@@ -227,7 +227,7 @@ onUnmounted(() => {
 }
 
 .submit-tip {
-  color: #6C7B8E;
+  color: var(--color-muted);
   font-size: 13px;
   display: inline-flex;
   align-items: center;
@@ -241,7 +241,7 @@ onUnmounted(() => {
 
 .complete h2 {
   margin: 0 0 18px;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
 }
 
 .summary-grid {
@@ -251,8 +251,8 @@ onUnmounted(() => {
 }
 
 .summary-card {
-  background: #F8FAFD;
-  border: 1px solid #E0E6ED;
+  background: var(--color-surface-soft);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   padding: 18px;
   display: flex;
@@ -261,20 +261,25 @@ onUnmounted(() => {
 }
 
 .summary-card .label {
-  color: #6C7B8E;
+  color: var(--color-muted);
   font-size: 13px;
 }
 
 .summary-card strong {
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
   font-size: 20px;
 }
 
 .restart-btn {
   margin-top: 18px;
-  background: #1A2B4A;
+  background: var(--color-primary-strong);
   color: #fff;
   border: 0;
+}
+
+.retry-btn {
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
 }
 
 .restart-btn:hover {

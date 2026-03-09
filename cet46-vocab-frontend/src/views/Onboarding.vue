@@ -129,7 +129,7 @@ const submitTest = async () => {
 <style scoped>
 .onboarding-page {
   min-height: 100vh;
-  background: linear-gradient(145deg, #F5F7FA 0%, #ECF2FB 100%);
+  background: var(--bg-gradient-1), var(--bg-gradient-2), var(--color-bg);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -137,7 +137,7 @@ const submitTest = async () => {
 
 .panel {
   width: min(920px, 100%);
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 20px;
   box-shadow: var(--shadow-card);
@@ -146,19 +146,19 @@ const submitTest = async () => {
 
 .panel h2 {
   margin: 0 0 18px;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
 }
 
 .question-card {
   margin-bottom: 16px;
   padding: 14px;
-  border: 1px solid #e4eaf2;
+  border: 1px solid var(--color-border-soft);
   border-radius: 14px;
 }
 
 .question-card h3 {
   margin: 0 0 10px;
-  color: #2C3E50;
+  color: var(--color-text);
   font-size: 16px;
 }
 
@@ -169,37 +169,37 @@ const submitTest = async () => {
 }
 
 .option-btn {
-  border: 1px solid #d9e1ec;
+  border: 1px solid var(--color-border-soft);
   border-radius: 10px;
-  background: #fff;
+  background: var(--color-surface);
   padding: 10px;
   cursor: pointer;
-  color: #42566f;
+  color: var(--color-muted-strong);
   text-align: left;
 }
 
 .option-btn.active {
-  border-color: #C9A84C;
-  background: rgba(201, 168, 76, 0.12);
-  color: #1A2B4A;
+  border-color: var(--color-accent);
+  background: var(--color-warning-soft);
+  color: var(--color-primary-strong);
 }
 
 .submit-btn {
   margin-top: 10px;
-  background: #1A2B4A;
-  border-color: #1A2B4A;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
   color: #fff;
 }
 
 .provider-section {
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid #e4eaf2;
+  border-top: 1px solid var(--color-border-soft);
 }
 
 .provider-section h3 {
   margin: 0 0 10px;
-  color: #2C3E50;
+  color: var(--color-text);
   font-size: 16px;
 }
 

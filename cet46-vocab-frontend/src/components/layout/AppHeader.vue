@@ -1,6 +1,14 @@
-<template>
+﻿<template>
   <header class="app-header">
     <div class="header-right">
+      <button
+        class="theme-toggle"
+        type="button"
+        :aria-label="isDark ? '切换为浅色模式' : '切换为深色模式'"
+        @click="toggleTheme"
+      >
+        <el-icon><component :is="isDark ? Sunny : Moon" /></el-icon>
+      </button>
       <span class="nickname">{{ displayName }}</span>
       <el-dropdown trigger="click" @command="onCommand">
         <div class="user-trigger">
@@ -22,15 +30,19 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowDown } from '@element-plus/icons-vue'
+import { ArrowDown, Moon, Sunny } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 import { logout } from '@/api/auth'
 
 const router = useRouter()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 
 const displayName = computed(() => userStore.nickname || '同学')
 const avatarText = computed(() => (displayName.value || '同').slice(0, 1))
+const isDark = computed(() => themeStore.isDark)
+const toggleTheme = () => themeStore.toggleTheme()
 
 const onCommand = async (command) => {
   if (command === 'profile') {
@@ -42,7 +54,7 @@ const onCommand = async (command) => {
       if (userStore.token) {
         await logout()
       }
-    } catch (error) {
+    } catch {
       ElMessage.warning('登出请求失败，已执行本地退出')
     } finally {
       userStore.clearUserInfo()
@@ -55,8 +67,8 @@ const onCommand = async (command) => {
 <style scoped>
 .app-header {
   height: 60px;
-  background: #fff;
-  border-bottom: 1px solid #E0E6ED;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -67,6 +79,24 @@ const onCommand = async (command) => {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface-soft);
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
 }
 
 .nickname {
@@ -80,7 +110,7 @@ const onCommand = async (command) => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  color: #667285;
+  color: var(--color-muted);
 }
 
 .user-trigger:focus-visible {

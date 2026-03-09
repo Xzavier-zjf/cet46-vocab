@@ -65,15 +65,15 @@ public class AdminUserController {
                                    Authentication authentication) {
         User user = userMapper.selectById(userId);
         if (user == null) {
-            return Result.fail(ResultCode.NOT_FOUND.getCode(), "用户不存在");
+            return Result.fail(ResultCode.NOT_FOUND.getCode(), "\u7528\u6237\u4E0D\u5B58\u5728");
         }
         String role = normalizeRole(req.getRole());
         if (role == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "角色必须是 ADMIN 或 USER");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "\u89D2\u8272\u5FC5\u987B\u662F ADMIN \u6216 USER");
         }
         Long currentUserId = currentUserId(authentication);
         if (currentUserId != null && currentUserId.equals(userId) && !"ADMIN".equals(role)) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "不能将当前登录管理员降级为 USER");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "\u4E0D\u80FD\u5C06\u5F53\u524D\u767B\u5F55\u7BA1\u7406\u5458\u964D\u7EA7\u4E3A USER");
         }
         user.setRole(role);
         userMapper.updateById(user);
@@ -85,11 +85,11 @@ public class AdminUserController {
                                       @Valid @RequestBody ResetPasswordRequest req) {
         User user = userMapper.selectById(userId);
         if (user == null) {
-            return Result.fail(ResultCode.NOT_FOUND.getCode(), "用户不存在");
+            return Result.fail(ResultCode.NOT_FOUND.getCode(), "\u7528\u6237\u4E0D\u5B58\u5728");
         }
         String newPassword = req.getNewPassword() == null ? "" : req.getNewPassword().trim();
         if (newPassword.length() < 6 || newPassword.length() > 64) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "新密码长度需为 6-64 位");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "\u65B0\u5BC6\u7801\u957F\u5EA6\u9700\u4E3A 6-64 \u4F4D");
         }
         user.setPassword(passwordEncoder.encode(newPassword));
         userMapper.updateById(user);
@@ -100,11 +100,11 @@ public class AdminUserController {
     public Result<Void> deleteUser(@PathVariable("id") Long userId, Authentication authentication) {
         User user = userMapper.selectById(userId);
         if (user == null) {
-            return Result.fail(ResultCode.NOT_FOUND.getCode(), "用户不存在");
+            return Result.fail(ResultCode.NOT_FOUND.getCode(), "\u7528\u6237\u4E0D\u5B58\u5728");
         }
         Long currentUserId = currentUserId(authentication);
         if (currentUserId != null && currentUserId.equals(userId)) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "不能删除当前登录账号");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "\u4E0D\u80FD\u5220\u9664\u5F53\u524D\u767B\u5F55\u8D26\u53F7");
         }
         userMapper.deleteById(userId);
         return Result.success();

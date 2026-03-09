@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <header class="top-nav">
     <div class="brand">CET词库</div>
 
@@ -18,7 +18,19 @@
     </nav>
 
     <div class="actions">
+      <button
+        class="theme-toggle"
+        type="button"
+        :aria-label="isDark ? '切换为浅色模式' : '切换为深色模式'"
+        @click="toggleTheme"
+      >
+        <el-icon>
+          <component :is="isDark ? Sunny : Moon" />
+        </el-icon>
+      </button>
+
       <span class="nickname">{{ displayName }}</span>
+
       <el-dropdown trigger="click" @command="onCommand">
         <div class="user-trigger">
           <el-avatar :size="30" :src="userStore.avatar || undefined">{{ avatarText }}</el-avatar>
@@ -50,18 +62,23 @@ import {
   Upload,
   UserFilled,
   ChatDotRound,
-  ArrowDown
+  ArrowDown,
+  Moon,
+  Sunny
 } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 import { logout } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
 
 const displayName = computed(() => userStore.nickname || '同学')
 const avatarText = computed(() => (displayName.value || '同').slice(0, 1))
+const isDark = computed(() => themeStore.isDark)
 
 const menuItems = computed(() => {
   if (userStore.role === 'ADMIN') {
@@ -83,6 +100,10 @@ const menuItems = computed(() => {
     { label: '我的资料', path: '/profile', icon: User }
   ]
 })
+
+const toggleTheme = () => {
+  themeStore.toggleTheme()
+}
 
 const isActive = (item) => {
   if (item.exact) {
@@ -107,6 +128,7 @@ const onCommand = async (command) => {
     return
   }
   if (command !== 'logout') return
+
   try {
     if (userStore.token) {
       await logout()
@@ -131,7 +153,7 @@ const onCommand = async (command) => {
   align-items: center;
   gap: 14px;
   padding: 0 16px;
-  background: #1a2b4a;
+  background: var(--color-nav-bg);
   border-bottom: 1px solid rgba(201, 168, 76, 0.4);
 }
 
@@ -168,7 +190,7 @@ const onCommand = async (command) => {
   align-items: center;
   gap: 8px;
   border-radius: 10px;
-  color: #d8e1ee;
+  color: var(--color-nav-text);
   text-decoration: none;
   white-space: nowrap;
   transition: all 0.2s ease;
@@ -176,12 +198,12 @@ const onCommand = async (command) => {
 
 .menu-item:hover {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--color-nav-hover);
 }
 
 .menu-item.active {
   color: #fff9e8;
-  background: rgba(201, 168, 76, 0.2);
+  background: var(--color-nav-active);
   box-shadow: inset 0 -2px 0 #c9a84c;
 }
 
@@ -195,6 +217,26 @@ const onCommand = async (command) => {
   gap: 10px;
 }
 
+.theme-toggle {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(217, 189, 115, 0.35);
+  border-radius: 999px;
+  background: rgba(14, 27, 49, 0.42);
+  color: #f4e2b2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  transform: translateY(-1px);
+  background: rgba(217, 189, 115, 0.16);
+  border-color: rgba(217, 189, 115, 0.58);
+}
+
 .nickname {
   color: #e8edf6;
   font-size: 13px;
@@ -205,7 +247,7 @@ const onCommand = async (command) => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #d8e1ee;
+  color: var(--color-nav-text);
   cursor: pointer;
 }
 

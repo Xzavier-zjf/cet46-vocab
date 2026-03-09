@@ -35,6 +35,9 @@
         <div v-for="msg in messages" :key="msg.id" class="msg" :class="msg.role">
           <div class="msg-body">
             <div class="bubble">{{ msg.content }}</div>
+            <div v-if="msg.role === 'assistant' && hasAutoContinuation(msg)" class="msg-meta">
+              <el-tag size="small" type="warning" effect="plain">已自动续写</el-tag>
+            </div>
             <div v-if="msg.role === 'assistant' && hasWordAction" class="msg-actions">
               <el-button
                 size="small"
@@ -559,14 +562,30 @@ async function send(contentOverride = '', targetSessionId = '') {
     pushMessage({
       id: Date.now() + 1,
       role: 'assistant',
-      content: answer || '我暂时没有整理出有效回答，你可以换个问法再试一次。'
+      content: answer || '我暂时没有整理出有效回答，你可以换个问法再试一次。',
+      autoContinued: isAutoContinued(res?.data?.autoContinued),
+      continuationRounds: toSafeContinuationRounds(res?.data?.continuationRounds)
     })
   } catch (error) {
     const rawMessage = String(error?.message || '')
     if (error?.code === 'ECONNABORTED' || rawMessage.includes('timeout')) {
       ElMessage.warning('学习助手响应较慢，请重试一次或缩短问题后再试')
+      pushMessage({
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: '本次请求超时，未收到模型完整回复。你可以重试一次，或缩短问题后再试。若你当前使用本地模型，请在个人设置中检查“本地模型连通性”。',
+        autoContinued: false,
+        continuationRounds: 0
+      })
     } else {
       ElMessage.warning(error?.businessMessage || error?.message || '学习助手暂时不可用')
+      pushMessage({
+        id: Date.now() + 1,
+        role: 'assistant',
+        content: '本次请求失败，暂未收到模型回复。请稍后重试；若仍失败，请检查当前模型连接状态。',
+        autoContinued: false,
+        continuationRounds: 0
+      })
     }
   } finally {
     loading.value = false
@@ -704,6 +723,8 @@ async function regenerateAssistantMessage(messageId) {
     })
     const answer = normalizeAnswer(res?.data?.answer) || '我暂时没有整理出有效回答，你可以稍后再试。'
     list[aiIdx].content = answer
+    list[aiIdx].autoContinued = isAutoContinued(res?.data?.autoContinued)
+    list[aiIdx].continuationRounds = toSafeContinuationRounds(res?.data?.continuationRounds)
     list[aiIdx].feedback = ''
     session.updatedAt = Date.now()
     persistState()
@@ -773,6 +794,19 @@ function normalizeAnswer(raw) {
     }
   }
   return markdownToPlainText(value)
+}
+
+function hasAutoContinuation(msg) {
+  return msg?.role === 'assistant' && !!msg?.autoContinued
+}
+
+function isAutoContinued(value) {
+  return value === true
+}
+
+function toSafeContinuationRounds(value) {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0
 }
 
 function markdownToPlainText(input) {
@@ -1113,7 +1147,7 @@ function toNumber(value) {
 
 .intro-card,
 .chat-card {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -1140,12 +1174,12 @@ function toNumber(value) {
 
 .intro-card h2 {
   margin: 0 0 8px;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .intro-card p {
   margin: 0;
-  color: #4b5d73;
+  color: var(--color-muted-strong);
 }
 
 .context {
@@ -1157,7 +1191,7 @@ function toNumber(value) {
 }
 
 .context-text {
-  color: #627389;
+  color: var(--color-muted);
   font-size: 13px;
 }
 
@@ -1166,7 +1200,7 @@ function toNumber(value) {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #6b7f97;
+  color: var(--color-muted);
   font-size: 12px;
 }
 
@@ -1210,13 +1244,18 @@ function toNumber(value) {
 }
 
 .msg.user .bubble {
-  background: #1a2b4a;
-  color: #fff;
+  background: var(--color-chat-user-bg);
+  color: var(--color-chat-user-text);
 }
 
 .msg.assistant .bubble {
-  background: #f3f6fa;
-  color: #23384f;
+  background: var(--color-chat-assistant-bg);
+  color: var(--color-chat-assistant-text);
+}
+
+.msg-meta {
+  display: flex;
+  padding-left: 4px;
 }
 
 .msg-actions {
@@ -1249,7 +1288,7 @@ function toNumber(value) {
 
 .tool-btn {
   --el-color-primary: #8a6a2f;
-  color: #61748d;
+  color: var(--color-muted);
 }
 
 .tool-btn.active {
@@ -1268,7 +1307,7 @@ function toNumber(value) {
 }
 
 .composer {
-  border-top: 1px solid #edf1f6;
+  border-top: 1px solid var(--color-border-soft);
   padding-top: 12px;
 }
 
@@ -1294,7 +1333,7 @@ function toNumber(value) {
 
 .mode-label {
   font-size: 12px;
-  color: #61748d;
+  color: var(--color-muted);
 }
 
 .history-filters {
@@ -1326,8 +1365,8 @@ function toNumber(value) {
   grid-template-columns: auto 1fr auto;
   gap: 8px;
   align-items: center;
-  border: 1px solid #e7edf5;
-  background: #f8fbff;
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-surface-soft);
   border-radius: 8px;
   padding: 8px;
 }
@@ -1347,13 +1386,13 @@ function toNumber(value) {
 }
 
 .history-main .title {
-  color: #1f2f45;
+  color: var(--color-primary-strong);
   font-size: 13px;
 }
 
 .history-main .time {
   display: block;
-  color: #75879f;
+  color: var(--color-muted);
   font-size: 12px;
   margin-top: 4px;
 }

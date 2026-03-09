@@ -233,8 +233,7 @@ const hasIncompleteLlmContent = () => {
 }
 
 const shouldKeepPolling = (status) => {
-  const explainPending = explainPolling.value
-    && !detail.llmContent?.smartExplain
+  const explainPending = !detail.llmContent?.smartExplain
     && (detail.llmContent?.explainStatus || 'pending') === 'pending'
   if (explainPending) return true
   if (status === 'pending') return true
@@ -419,7 +418,7 @@ onUnmounted(() => {
 }
 
 .state-card {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -428,12 +427,12 @@ onUnmounted(() => {
 
 .state-card h3 {
   margin: 0 0 10px;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .state-card p {
   margin: 0;
-  color: #6b7a8d;
+  color: var(--color-muted);
 }
 
 .back-btn {
@@ -455,7 +454,7 @@ onUnmounted(() => {
 
 .word {
   margin: 0;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 44px;
   line-height: 1.1;
   font-weight: 700;
@@ -464,7 +463,7 @@ onUnmounted(() => {
 .back-link {
   padding: 0;
   margin-bottom: 8px;
-  color: #6d7f95;
+  color: var(--color-muted);
 }
 
 .meta-inline {
@@ -475,40 +474,40 @@ onUnmounted(() => {
 }
 
 .phonetic {
-  color: #8896a8;
+  color: var(--color-muted-soft);
   font-size: 18px;
 }
 
 .speak-btn {
   padding: 0 4px;
-  color: #4a6285;
+  color: var(--color-muted-strong);
 }
 
 .learn-btn {
-  background: #1a2b4a;
-  border-color: #1a2b4a;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
   color: #fff;
 }
 
 .learn-btn:disabled {
-  background: #d0d7e3;
-  border-color: #d0d7e3;
-  color: #f8f9fb;
+  background: var(--color-border-soft);
+  border-color: var(--color-border-soft);
+  color: var(--color-surface);
 }
 
 .retry-btn {
-  border-color: #1a2b4a;
-  color: #1a2b4a;
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary-strong);
 }
 
 .assistant-btn {
-  border-color: #c9a84c;
-  color: #6c5311;
-  background: #fffdf6;
+  border-color: var(--color-accent);
+  color: var(--color-warning);
+  background: var(--color-warning-soft);
 }
 
 .meaning-card {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -517,13 +516,13 @@ onUnmounted(() => {
 
 .meaning-card h3 {
   margin: 0 0 10px;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 16px;
 }
 
 .meaning-card p {
   margin: 0;
-  color: #2c3e50;
+  color: var(--color-text);
   line-height: 1.8;
 }
 

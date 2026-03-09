@@ -1,4 +1,4 @@
-import axios from 'axios'
+﻿import axios from 'axios'
 import { ElMessage } from 'element-plus'
 import { getToken } from '@/utils/token'
 import { useUserStore } from '@/stores/user'
@@ -33,6 +33,7 @@ request.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    const silentError = !!error?.config?.silentError
     const status = error?.response?.status
     const businessCode = error?.businessCode
     const userStore = useUserStore()
@@ -43,12 +44,15 @@ request.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    const msg =
-      error?.businessMessage ||
-      error?.response?.data?.message ||
-      error?.message ||
-      '请求失败，请稍后重试'
-    ElMessage.error(msg)
+    if (!silentError) {
+      const msg =
+        error?.businessMessage ||
+        error?.response?.data?.message ||
+        error?.message ||
+        '请求失败，请稍后重试'
+      ElMessage.error(msg)
+    }
+
     return Promise.reject(error)
   }
 )

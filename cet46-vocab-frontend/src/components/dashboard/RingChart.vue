@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="ring-chart">
     <div ref="chartRef" class="chart" />
   </div>
@@ -7,6 +7,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useThemeStore } from '@/stores/theme'
 
 const props = defineProps({
   mastered: { type: Number, default: 0 },
@@ -15,6 +16,7 @@ const props = defineProps({
 })
 
 const chartRef = ref(null)
+const themeStore = useThemeStore()
 let chartInstance = null
 
 const unlearned = computed(() => {
@@ -29,21 +31,26 @@ const percent = computed(() => {
 
 const renderChart = () => {
   if (!chartInstance) return
+  const isDark = themeStore.isDark
+  const titleColor = isDark ? '#dbe8ff' : '#1A2B4A'
+  const subTitleColor = isDark ? '#8da4c8' : '#8896A8'
+  const colors = isDark ? ['#9FB7E4', '#D9BD73', '#23344e'] : ['#1A2B4A', '#C9A84C', '#E8ECF2']
+
   chartInstance.setOption({
     animation: true,
-    color: ['#1A2B4A', '#C9A84C', '#E8ECF2'],
+    color: colors,
     title: {
       text: `${percent.value}%`,
       subtext: '掌握进度',
       left: 'center',
       top: '44%',
       textStyle: {
-        color: '#1A2B4A',
+        color: titleColor,
         fontSize: 30,
         fontWeight: 700
       },
       subtextStyle: {
-        color: '#8896A8',
+        color: subTitleColor,
         fontSize: 13
       }
     },
@@ -64,15 +71,28 @@ const renderChart = () => {
   })
 }
 
-onMounted(() => {
+const initChart = () => {
   if (!chartRef.value) return
-  chartInstance = echarts.init(chartRef.value)
+  if (chartInstance) {
+    chartInstance.dispose()
+    chartInstance = null
+  }
+  chartInstance = echarts.init(chartRef.value, themeStore.isDark ? 'dark' : undefined)
   renderChart()
+}
+
+onMounted(() => {
+  initChart()
 })
 
 watch(
   () => [props.mastered, props.learning, props.total],
   () => renderChart()
+)
+
+watch(
+  () => themeStore.isDark,
+  () => initChart()
 )
 
 onUnmounted(() => {

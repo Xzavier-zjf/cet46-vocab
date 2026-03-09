@@ -1,6 +1,6 @@
 <template>
   <section class="report-card">
-    <h4 class="title">📊 本周学习报告</h4>
+    <h4 class="title">📋 本周学习报告</h4>
     <p class="content">{{ report || '本周报告正在生成中。' }}</p>
   </section>
 </template>

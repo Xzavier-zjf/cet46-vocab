@@ -25,7 +25,7 @@ public final class PromptTemplate {
             {
               "word": "{{word}}",
               "sentence_en": "One example sentence in English.",
-              "sentence_zh": "该例句的中文翻译。",
+              "sentence_zh": "\u8BE5\u4F8B\u53E5\u7684\u4E2D\u6587\u7FFB\u8BD1\u3002",
               "difficulty": "CET-4 or CET-6"
             }
             """;
@@ -50,7 +50,7 @@ public final class PromptTemplate {
             {
               "word": "{{word}}",
               "sentence_en": "One example sentence in English.",
-              "sentence_zh": "该例句的中文翻译。",
+              "sentence_zh": "\u8BE5\u4F8B\u53E5\u7684\u4E2D\u6587\u7FFB\u8BD1\u3002",
               "difficulty": "CET-4 or CET-6"
             }
             """;
@@ -59,7 +59,7 @@ public final class PromptTemplate {
             # SYSTEM
             You are a witty, sarcastic English teacher who uses brutally honest
             and relatable sentences to make vocabulary unforgettable.
-            Be sharp, funny, and slightly mean — but always educational.
+            Be sharp, funny, and slightly mean \u2014 but always educational.
 
             # USER
             Generate example sentences for the English word below.
@@ -75,7 +75,7 @@ public final class PromptTemplate {
             {
               "word": "{{word}}",
               "sentence_en": "One example sentence in English.",
-              "sentence_zh": "该例句的中文翻译。",
+              "sentence_zh": "\u8BE5\u4F8B\u53E5\u7684\u4E2D\u6587\u7FFB\u8BD1\u3002",
               "difficulty": "CET-4 or CET-6"
             }
             """;
@@ -182,8 +182,8 @@ public final class PromptTemplate {
             Output format:
             {
               "word": "{{word}}",
-              "mnemonic": "记忆技巧或联想故事，用中文描述。",
-              "root_analysis": "词根词缀分析（如无则填 null）。"
+              "mnemonic": "\u8BB0\u5FC6\u6280\u5DE7\u6216\u8054\u60F3\u6545\u4E8B\uFF0C\u7528\u4E2D\u6587\u63CF\u8FF0\u3002",
+              "root_analysis": "\u8BCD\u6839\u8BCD\u7F00\u5206\u6790\uFF08\u5982\u65E0\u5219\u586B null\uFF09\u3002"
             }
             """;
 
@@ -205,15 +205,15 @@ public final class PromptTemplate {
             Output format:
             {
               "word": "{{word}}",
-              "mnemonic": "记忆技巧或联想故事，用中文描述。",
-              "root_analysis": "词根词缀分析（如无则填 null）。"
+              "mnemonic": "\u8BB0\u5FC6\u6280\u5DE7\u6216\u8054\u60F3\u6545\u4E8B\uFF0C\u7528\u4E2D\u6587\u63CF\u8FF0\u3002",
+              "root_analysis": "\u8BCD\u6839\u8BCD\u7F00\u5206\u6790\uFF08\u5982\u65E0\u5219\u586B null\uFF09\u3002"
             }
             """;
 
     public static final String MNEMONIC_SARCASTIC = """
             # SYSTEM
             You are a sarcastic mnemonics coach. Create a brutally memorable
-            association — the more painfully relatable, the better.
+            association \u2014 the more painfully relatable, the better.
 
             # USER
             Create a memory aid for the English word below.
@@ -228,8 +228,8 @@ public final class PromptTemplate {
             Output format:
             {
               "word": "{{word}}",
-              "mnemonic": "记忆技巧或联想故事，用中文描述。",
-              "root_analysis": "词根词缀分析（如无则填 null）。"
+              "mnemonic": "\u8BB0\u5FC6\u6280\u5DE7\u6216\u8054\u60F3\u6545\u4E8B\uFF0C\u7528\u4E2D\u6587\u63CF\u8FF0\u3002",
+              "root_analysis": "\u8BCD\u6839\u8BCD\u7F00\u5206\u6790\uFF08\u5982\u65E0\u5219\u586B null\uFF09\u3002"
             }
             """;
 

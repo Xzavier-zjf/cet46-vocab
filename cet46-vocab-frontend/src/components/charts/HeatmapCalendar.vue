@@ -5,12 +5,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
+import { useThemeStore } from '@/stores/theme'
 
 const props = defineProps({
   data: { type: Array, default: () => [] }
 })
 
 const chartRef = ref(null)
+const themeStore = useThemeStore()
 let chart = null
 
 const today = new Date()
@@ -26,6 +28,10 @@ const maxValue = computed(() => {
 const render = () => {
   if (!chart) return
   const source = Array.isArray(props.data) ? props.data : []
+  const isDark = themeStore.isDark
+  const textColor = isDark ? '#8da4c8' : '#6D7E94'
+  const borderColor = isDark ? '#1a2740' : '#ffffff'
+  const heatColors = isDark ? ['#132038', '#3e5f95', '#9FB7E4'] : ['#E8ECF2', '#1A2B4A']
   chart.setOption({
     tooltip: {
       formatter: (params) => `${params.value[0]}: ${params.value[1]}`
@@ -37,9 +43,9 @@ const render = () => {
       left: 'center',
       top: 4,
       inRange: {
-        color: ['#E8ECF2', '#1A2B4A']
+        color: heatColors
       },
-      textStyle: { color: '#6D7E94' }
+      textStyle: { color: textColor }
     },
     calendar: {
       top: 52,
@@ -50,14 +56,14 @@ const render = () => {
         startDate.toISOString().slice(0, 10),
         today.toISOString().slice(0, 10)
       ],
-      splitLine: { lineStyle: { color: '#fff', width: 1 } },
+      splitLine: { lineStyle: { color: borderColor, width: 1 } },
       itemStyle: {
         borderWidth: 1,
-        borderColor: '#fff'
+        borderColor
       },
       yearLabel: { show: false },
-      monthLabel: { color: '#6D7E94' },
-      dayLabel: { color: '#6D7E94' }
+      monthLabel: { color: textColor },
+      dayLabel: { color: textColor }
     },
     series: [
       {
@@ -69,16 +75,29 @@ const render = () => {
   })
 }
 
-onMounted(() => {
+const initChart = () => {
   if (!chartRef.value) return
-  chart = echarts.init(chartRef.value)
+  if (chart) {
+    chart.dispose()
+    chart = null
+  }
+  chart = echarts.init(chartRef.value, themeStore.isDark ? 'dark' : undefined)
   render()
+}
+
+onMounted(() => {
+  initChart()
 })
 
 watch(
   () => props.data,
   () => render(),
   { deep: true }
+)
+
+watch(
+  () => themeStore.isDark,
+  () => initChart()
 )
 
 onUnmounted(() => {

@@ -51,5 +51,7 @@ const isStatsRoute = computed(() => route.path === '/stats' || route.path.starts
   padding: 24px;
   min-width: 0;
   overflow: auto;
+  color: var(--color-text);
+  transition: color 0.2s ease;
 }
 </style>

@@ -12,4 +12,6 @@ public class AssistantChatResponse {
     private String provider;
     private String style;
     private List<String> suggestions;
+    private Boolean autoContinued;
+    private Integer continuationRounds;
 }

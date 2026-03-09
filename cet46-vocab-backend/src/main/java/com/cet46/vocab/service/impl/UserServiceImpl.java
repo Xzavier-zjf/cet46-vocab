@@ -157,10 +157,10 @@ public class UserServiceImpl implements UserService {
             throw new UsernameNotFoundException("user not found");
         }
         if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("旧密码不正确");
+            throw new IllegalArgumentException("\u65E7\u5BC6\u7801\u4E0D\u6B63\u786E");
         }
         if (req.getOldPassword().equals(req.getNewPassword())) {
-            throw new IllegalArgumentException("新密码不能与旧密码相同");
+            throw new IllegalArgumentException("\u65B0\u5BC6\u7801\u4E0D\u80FD\u4E0E\u65E7\u5BC6\u7801\u76F8\u540C");
         }
         user.setPassword(passwordEncoder.encode(req.getNewPassword()));
         userMapper.updateById(user);

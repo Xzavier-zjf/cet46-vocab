@@ -101,7 +101,7 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), req.getWordType());
         llmAsyncService.regenerateWordContent(req.getWordId(), req.getWordType(), style, provider);
@@ -123,7 +123,7 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), req.getWordType());
         llmAsyncService.regenerateWordExplainContent(req.getWordId(), req.getWordType(), style, provider);
@@ -151,13 +151,17 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
         }
 
         LambdaQueryWrapper<WordMeta> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(WordMeta::getStyle, style)
-                .eq(WordMeta::getGenStatus, "pending")
                 .eq(WordMeta::getWordType, normalizedWordType)
+                .and(w -> w.eq(WordMeta::getGenStatus, "pending")
+                        .or()
+                        .eq(WordMeta::getAiExplainStatus, "pending")
+                        .or()
+                        .eq(WordMeta::getAiExplainStatus, "fallback"))
                 .orderByAsc(WordMeta::getUpdatedAt)
                 .last("LIMIT " + batchLimit);
         List<WordMeta> pendingMetas = wordMetaMapper.selectList(wrapper);
@@ -172,6 +176,7 @@ public class WordController {
         for (Long pendingWordId : pendingWordIds) {
             wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType);
             llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType, style, provider);
+            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType, style, provider);
         }
 
         Map<String, Object> data = new HashMap<>();

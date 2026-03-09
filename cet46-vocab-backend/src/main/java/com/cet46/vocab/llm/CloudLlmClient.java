@@ -61,6 +61,10 @@ public class CloudLlmClient {
     }
 
     public String generate(String prompt, Integer maxTokens) {
+        return generateWithMeta(prompt, maxTokens).content();
+    }
+
+    public GenerationResult generateWithMeta(String prompt, Integer maxTokens) {
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
             throw new OllamaClient.LlmCallException("cloud llm is disabled");
         }
@@ -91,15 +95,17 @@ public class CloudLlmClient {
         for (int i = 0; i <= retries; i++) {
             try {
                 ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
-                String content = extractContent(response.getBody());
+                Map<?, ?> body = response.getBody();
+                String content = extractContent(body);
                 if (!StringUtils.hasText(content)) {
                     throw new OllamaClient.LlmCallException("cloud llm response content is empty");
                 }
+                boolean truncated = isLengthTruncated(body);
                 log.info("cloud llm response model={}, chars={}, preview={}",
                         cloudLlmProperties.getModel(),
                         content.length(),
                         preview(content));
-                return content;
+                return new GenerationResult(content, truncated);
             } catch (RuntimeException ex) {
                 lastException = ex;
             }
@@ -117,16 +123,16 @@ public class CloudLlmClient {
                 && StringUtils.hasText(model)
                 && StringUtils.hasText(cloudLlmProperties.getApiKey());
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
-            details.add("云端能力未启用（llm.cloud.enabled=false）");
+            details.add("\u4E91\u7AEF\u80FD\u529B\u672A\u542F\u7528\uFF08llm.cloud.enabled=false\uFF09");
         }
         if (!StringUtils.hasText(baseUrl)) {
-            details.add("缺少 llm.cloud.base-url");
+            details.add("\u7F3A\u5C11 llm.cloud.base-url");
         }
         if (!StringUtils.hasText(model)) {
-            details.add("缺少 llm.cloud.model");
+            details.add("\u7F3A\u5C11 llm.cloud.model");
         }
         if (!StringUtils.hasText(cloudLlmProperties.getApiKey())) {
-            details.add("缺少云端 API Key");
+            details.add("\u7F3A\u5C11\u4E91\u7AEF API Key");
         }
 
         String host = null;
@@ -136,13 +142,13 @@ public class CloudLlmClient {
                 URI uri = URI.create(baseUrl.trim());
                 host = uri.getHost();
                 if (!StringUtils.hasText(host)) {
-                    details.add("base-url 未包含可解析 host");
+                    details.add("base-url \u672A\u5305\u542B\u53EF\u89E3\u6790 host");
                 } else {
                     InetAddress.getByName(host);
                     dnsOk = true;
                 }
             } catch (Exception ex) {
-                details.add("DNS 解析失败: " + ex.getMessage());
+                details.add("DNS \u89E3\u6790\u5931\u8D25: " + ex.getMessage());
             }
         }
 
@@ -157,42 +163,42 @@ public class CloudLlmClient {
                 authOk = true;
                 modelOk = StringUtils.hasText(content);
                 if (!modelOk) {
-                    details.add("鉴权通过，但模型返回空内容");
+                    details.add("\u9274\u6743\u901A\u8FC7\uFF0C\u4F46\u6A21\u578B\u8FD4\u56DE\u7A7A\u5185\u5BB9");
                 }
             } catch (HttpStatusCodeException ex) {
                 latencyMs = System.currentTimeMillis() - start;
                 HttpStatusCode code = ex.getStatusCode();
                 int status = code.value();
                 if (status == 401 || status == 403) {
-                    details.add("鉴权失败（HTTP " + status + "）");
+                    details.add("\u9274\u6743\u5931\u8D25\uFF08HTTP " + status + "\uFF09");
                 } else {
                     authOk = true;
-                    details.add("模型调用失败（HTTP " + status + "）");
+                    details.add("\u6A21\u578B\u8C03\u7528\u5931\u8D25\uFF08HTTP " + status + "\uFF09");
                     String body = ex.getResponseBodyAsString();
                     if (StringUtils.hasText(body)) {
-                        details.add("错误摘要: " + preview(body));
+                        details.add("\u9519\u8BEF\u6458\u8981: " + preview(body));
                     }
                 }
             } catch (ResourceAccessException ex) {
                 latencyMs = System.currentTimeMillis() - start;
-                details.add("网络连接失败: " + ex.getMessage());
+                details.add("\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25: " + ex.getMessage());
             } catch (Exception ex) {
                 latencyMs = System.currentTimeMillis() - start;
-                details.add("调用异常: " + ex.getMessage());
+                details.add("\u8C03\u7528\u5F02\u5E38: " + ex.getMessage());
             }
         }
 
         String message;
         if (!configured) {
-            message = "云端配置不完整";
+            message = "\u4E91\u7AEF\u914D\u7F6E\u4E0D\u5B8C\u6574";
         } else if (!dnsOk) {
-            message = "DNS 解析失败";
+            message = "DNS \u89E3\u6790\u5931\u8D25";
         } else if (!authOk) {
-            message = "鉴权失败";
+            message = "\u9274\u6743\u5931\u8D25";
         } else if (!modelOk) {
-            message = "模型不可用";
+            message = "\u6A21\u578B\u4E0D\u53EF\u7528";
         } else {
-            message = "云端连通正常";
+            message = "\u4E91\u7AEF\u8FDE\u901A\u6B63\u5E38";
         }
 
         return CloudLlmHealthResponse.builder()
@@ -261,11 +267,34 @@ public class CloudLlmClient {
         return content == null ? null : String.valueOf(content);
     }
 
+    private boolean isLengthTruncated(Map<?, ?> body) {
+        if (body == null) {
+            return false;
+        }
+        Object choices = body.get("choices");
+        if (!(choices instanceof List<?> choiceList) || choiceList.isEmpty()) {
+            return false;
+        }
+        Object firstChoice = choiceList.get(0);
+        if (!(firstChoice instanceof Map<?, ?> firstChoiceMap)) {
+            return false;
+        }
+        Object finishReason = firstChoiceMap.get("finish_reason");
+        if (finishReason == null) {
+            return false;
+        }
+        String value = String.valueOf(finishReason).trim().toLowerCase();
+        return "length".equals(value) || "max_tokens".equals(value);
+    }
+
     private String preview(String text) {
         String normalized = text == null ? "" : text.replace("\r", "\\r").replace("\n", "\\n");
         if (normalized.length() <= RAW_LOG_LIMIT) {
             return normalized;
         }
         return normalized.substring(0, RAW_LOG_LIMIT) + "...";
+    }
+
+    public record GenerationResult(String content, boolean truncated) {
     }
 }

@@ -32,7 +32,7 @@
             </template>
 
             <p v-else-if="genStatus === 'pending' && pollStalled" class="empty">AI仍在生成中，请稍后刷新</p>
-            <p v-else-if="hasAnyContent" class="empty">近义词仍在补充中，可点击“重试AI生成”</p>
+            <p v-else-if="hasAnyContent" class="empty">近义词正在生成中，请稍后刷新</p>
             <p v-else-if="genStatus === 'fallback'" class="empty">暂无AI内容，仅显示基础释义</p>
             <p v-else class="empty">暂无AI内容</p>
           </div>
@@ -50,7 +50,7 @@
             </template>
 
             <p v-else-if="genStatus === 'pending' && pollStalled" class="empty">AI仍在生成中，请稍后刷新</p>
-            <p v-else-if="hasAnyContent" class="empty">助记仍在补充中，可点击“重试AI生成”</p>
+            <p v-else-if="hasAnyContent" class="empty">助记正在生成中，请稍后刷新</p>
             <p v-else-if="genStatus === 'fallback'" class="empty">暂无AI内容，仅显示基础释义</p>
             <p v-else class="empty">暂无AI内容</p>
           </div>
@@ -240,7 +240,7 @@ function pickArrayValues(rawArrayText) {
 
 <style scoped>
 .meta-panel {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -254,7 +254,7 @@ function pickArrayValues(rawArrayText) {
 
 .line {
   margin: 0 0 10px;
-  color: #2C3E50;
+  color: var(--color-text);
   line-height: 1.7;
 }
 
@@ -263,17 +263,17 @@ function pickArrayValues(rawArrayText) {
 }
 
 .line.zh {
-  color: #4d5c70;
+  color: var(--color-muted-strong);
 }
 
 .line.ex {
-  color: #8a6b20;
+  color: var(--color-warning);
   font-style: italic;
 }
 
 .syn-item {
   padding: 10px 0;
-  border-bottom: 1px dashed #e9edf4;
+  border-bottom: 1px dashed var(--color-border-dashed);
 }
 
 .syn-item:last-child {
@@ -282,7 +282,7 @@ function pickArrayValues(rawArrayText) {
 
 .empty {
   margin: 8px 0 0;
-  color: #8896A8;
+  color: var(--color-muted-soft);
 }
 
 .fade-enter-active {

@@ -134,7 +134,7 @@ onMounted(async () => {
 }
 
 .metric-card {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -143,13 +143,13 @@ onMounted(async () => {
 
 .label {
   display: block;
-  color: #8896a8;
+  color: var(--color-muted-soft);
   font-size: 13px;
   margin-bottom: 10px;
 }
 
 .metric-card strong {
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 28px;
   font-weight: 700;
 }
@@ -162,14 +162,14 @@ onMounted(async () => {
 
 .metric-note {
   margin: -6px 2px 0;
-  color: #8a98ab;
+  color: var(--color-muted-soft);
   font-size: 12px;
   line-height: 1.5;
 }
 
 .chart-card,
 .report-box {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -185,7 +185,7 @@ onMounted(async () => {
 
 .chart-card h3 {
   margin: 0;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 16px;
 }
 
@@ -202,9 +202,9 @@ onMounted(async () => {
 }
 
 .quick-btn.primary {
-  background: #1a2b4a;
+  background: var(--color-primary-strong);
   color: #fff;
-  border-color: #1a2b4a;
+  border-color: var(--color-primary-strong);
 }
 
 @media (max-width: 1100px) {

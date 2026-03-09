@@ -32,6 +32,8 @@ public class AssistantController {
     private static final String MODE_QUICK = "quick";
     private static final String MODE_BALANCED = "balanced";
     private static final String MODE_DETAILED = "detailed";
+    private static final int MAX_CONTINUATION_ROUNDS = 2;
+    private static final int OVERLAP_MIN_LEN = 20;
 
     private final UserMapper userMapper;
     private final OllamaClient ollamaClient;
@@ -67,20 +69,98 @@ public class AssistantController {
         String prompt = buildAssistantPrompt(req, style, answerMode, modeConfig);
 
         try {
-            String answer = LlmProvider.CLOUD.equals(normalizedProvider)
-                    ? cloudLlmClient.generate(prompt, modeConfig.cloudMaxTokens())
-                    : ollamaClient.generatePlainText(prompt, modeConfig.localNumPredict());
-
+            String effectiveProvider = normalizedProvider;
+            GeneratedAnswer generated;
+            try {
+                generated = generateCompleteAnswer(prompt, normalizedProvider, modeConfig);
+            } catch (Exception firstEx) {
+                if (!LlmProvider.CLOUD.equals(normalizedProvider)) {
+                    throw firstEx;
+                }
+                generated = generateCompleteAnswer(prompt, LlmProvider.LOCAL, modeConfig);
+                effectiveProvider = LlmProvider.LOCAL;
+            }
             AssistantChatResponse data = AssistantChatResponse.builder()
-                    .answer(cleanAnswer(answer))
-                    .provider(normalizedProvider)
+                    .answer(cleanAnswer(generated.content()))
+                    .provider(effectiveProvider)
                     .style(style)
                     .suggestions(buildSuggestions(req))
+                    .autoContinued(generated.continuationRounds() > 0)
+                    .continuationRounds(generated.continuationRounds())
                     .build();
             return Result.success(data);
         } catch (Exception ex) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "学习助手暂时不可用，请稍后重试");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u5b66\u4e60\u52a9\u624b\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5");
         }
+    }
+
+    private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig) {
+        String merged = "";
+        String currentPrompt = prompt;
+        int continuationRounds = 0;
+
+        for (int i = 0; i <= MAX_CONTINUATION_ROUNDS; i++) {
+            GenerationChunk chunk = callModel(currentPrompt, provider, modeConfig);
+            String piece = chunk.content() == null ? "" : chunk.content().trim();
+            if (!StringUtils.hasText(piece)) {
+                break;
+            }
+            merged = mergeAnswerChunks(merged, piece);
+            if (!chunk.truncated()) {
+                break;
+            }
+            continuationRounds += 1;
+            currentPrompt = buildContinuationPrompt(prompt, merged);
+        }
+        return new GeneratedAnswer(merged, continuationRounds);
+    }
+
+    private GenerationChunk callModel(String prompt, String provider, ModeConfig modeConfig) {
+        if (LlmProvider.CLOUD.equals(provider)) {
+            CloudLlmClient.GenerationResult result = cloudLlmClient.generateWithMeta(prompt, modeConfig.cloudMaxTokens());
+            return new GenerationChunk(result.content(), result.truncated());
+        }
+        OllamaClient.GenerationResult result = ollamaClient.generatePlainTextWithMeta(prompt, modeConfig.localNumPredict());
+        return new GenerationChunk(result.content(), result.truncated());
+    }
+
+    private String buildContinuationPrompt(String originalPrompt, String partialAnswer) {
+        StringBuilder sb = new StringBuilder(originalPrompt.length() + partialAnswer.length() + 220);
+        sb.append(originalPrompt).append('\n');
+        sb.append("\n# PARTIAL ANSWER ALREADY SENT\n");
+        sb.append(trimText(partialAnswer, 2800)).append('\n');
+        sb.append("\n# CONTINUE RULES\n");
+        sb.append("Continue from the last unfinished sentence.\n");
+        sb.append("Do not repeat any sentence from the partial answer.\n");
+        sb.append("Only output the continuation text.\n");
+        return sb.toString();
+    }
+
+    private String mergeAnswerChunks(String current, String nextChunk) {
+        String base = StringUtils.hasText(current) ? current.trim() : "";
+        String incoming = StringUtils.hasText(nextChunk) ? nextChunk.trim() : "";
+        if (!StringUtils.hasText(base)) {
+            return incoming;
+        }
+        if (!StringUtils.hasText(incoming)) {
+            return base;
+        }
+
+        int maxOverlap = Math.min(base.length(), incoming.length());
+        int overlap = 0;
+        for (int len = maxOverlap; len >= OVERLAP_MIN_LEN; len--) {
+            String suffix = base.substring(base.length() - len);
+            String prefix = incoming.substring(0, len);
+            if (suffix.equals(prefix)) {
+                overlap = len;
+                break;
+            }
+        }
+        String tail = overlap > 0 ? incoming.substring(overlap).trim() : incoming;
+        if (!StringUtils.hasText(tail)) {
+            return base;
+        }
+        return base + "\n" + tail;
     }
 
     private Long getUserId(Authentication authentication) {
@@ -168,7 +248,7 @@ public class AssistantController {
         sb.append(PromptTemplate.LEARNING_ASSISTANT_SYSTEM).append('\n');
         sb.append("\n# USER PROFILE\n");
         sb.append("style=").append(style).append('\n');
-        sb.append("target=中国大学生CET备考\n");
+        sb.append("target=\u4e2d\u56fd\u5927\u5b66\u751fCET\u5907\u8003\n");
         sb.append("answer_mode=").append(answerMode).append('\n');
 
         AssistantChatRequest.WordContext ctx = req.getWordContext();
@@ -202,7 +282,7 @@ public class AssistantController {
         sb.append("\n# ANSWER LENGTH\n");
         sb.append(modeConfig.lengthInstruction()).append('\n');
         sb.append("\n# OUTPUT FORMAT\n");
-        sb.append("请直接输出回答正文，不要使用Markdown代码块。\n");
+        sb.append("\u8bf7\u76f4\u63a5\u8f93\u51fa\u56de\u7b54\u6b63\u6587\uff0c\u4e0d\u8981\u4f7f\u7528Markdown\u4ee3\u7801\u5757\u3002\n");
         return sb.toString();
     }
 
@@ -226,7 +306,7 @@ public class AssistantController {
 
     private String cleanAnswer(String answer) {
         if (!StringUtils.hasText(answer)) {
-            return "这个问题我暂时没有生成到有效答案，你可以换个问法再试一次。";
+            return "\u8fd9\u4e2a\u95ee\u9898\u6211\u6682\u65f6\u6ca1\u6709\u751f\u6210\u5230\u6709\u6548\u7b54\u6848\uff0c\u4f60\u53ef\u4ee5\u6362\u4e2a\u95ee\u6cd5\u518d\u8bd5\u4e00\u6b21\u3002";
         }
         String text = answer.trim();
         if (text.startsWith("```")) {
@@ -289,7 +369,7 @@ public class AssistantController {
                 escaped = true;
                 continue;
             }
-            if (c == '"') {
+            if (c == '\"') {
                 break;
             }
             sb.append(c);
@@ -314,14 +394,14 @@ public class AssistantController {
         AssistantChatRequest.WordContext ctx = req.getWordContext();
         if (ctx != null && StringUtils.hasText(ctx.getWord())) {
             String word = ctx.getWord().trim();
-            suggestions.add("再给我2个 " + word + " 的四六级例句");
-            suggestions.add(word + " 常见易错搭配有哪些");
-            suggestions.add(word + " 和近义词在语气上有什么区别");
+            suggestions.add("\u518d\u7ed9\u62112\u4e2a " + word + " \u7684\u56db\u516d\u7ea7\u4f8b\u53e5");
+            suggestions.add(word + " \u5e38\u89c1\u6613\u9519\u642d\u914d\u6709\u54ea\u4e9b");
+            suggestions.add(word + " \u548c\u8fd1\u4e49\u8bcd\u5728\u8bed\u6c14\u4e0a\u6709\u4ec0\u4e48\u533a\u522b");
             return suggestions;
         }
-        suggestions.add("帮我制定本周四六级背词计划");
-        suggestions.add("我总记不住单词，应该怎么复习");
-        suggestions.add("给我3条四六级阅读提分建议");
+        suggestions.add("\u5e2e\u6211\u5236\u5b9a\u672c\u5468\u56db\u516d\u7ea7\u80cc\u8bcd\u8ba1\u5212");
+        suggestions.add("\u6211\u603b\u8bb0\u4e0d\u4f4f\u5355\u8bcd\uff0c\u5e94\u8be5\u600e\u4e48\u590d\u4e60");
+        suggestions.add("\u7ed9\u62113\u6761\u56db\u516d\u7ea7\u9605\u8bfb\u63d0\u5206\u5efa\u8bae");
         return suggestions;
     }
 
@@ -330,5 +410,11 @@ public class AssistantController {
                               int localNumPredict,
                               int cloudMaxTokens,
                               String lengthInstruction) {
+    }
+
+    private record GenerationChunk(String content, boolean truncated) {
+    }
+
+    private record GeneratedAnswer(String content, int continuationRounds) {
     }
 }

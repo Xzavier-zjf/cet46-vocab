@@ -75,7 +75,8 @@ const handleSpeak = (accent) => {
   inset: 0;
   padding: 42px 48px;
   border-radius: 16px;
-  background: #fff;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
   box-shadow: var(--shadow-card);
   backface-visibility: hidden;
   display: flex;
@@ -96,7 +97,7 @@ const handleSpeak = (accent) => {
 
 .word {
   margin: 0;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
   font-size: 32px;
   line-height: 1.2;
   font-weight: 700;
@@ -109,10 +110,10 @@ const handleSpeak = (accent) => {
 }
 
 .speak-btn {
-  border: 1px solid #d9e1ec;
-  background: #fff;
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-surface-soft);
   border-radius: 14px;
-  color: #4f6587;
+  color: var(--color-muted-strong);
   font-size: 12px;
   padding: 3px 8px;
   cursor: pointer;
@@ -120,13 +121,13 @@ const handleSpeak = (accent) => {
 
 .phonetic {
   margin: 14px 0 28px;
-  color: #8896A8;
+  color: var(--color-muted-soft);
   font-size: 16px;
 }
 
 .hint {
   margin: 0;
-  color: #A3AFBE;
+  color: var(--color-muted-soft);
   font-size: 14px;
 }
 
@@ -136,14 +137,14 @@ const handleSpeak = (accent) => {
 
 .chinese {
   margin: 0 0 14px;
-  color: #2C3E50;
+  color: var(--color-text);
   font-size: 18px;
   line-height: 1.7;
 }
 
 .example {
   margin: 0;
-  color: #8a6b20;
+  color: var(--color-warning);
   font-size: 14px;
   font-style: italic;
   line-height: 1.8;

@@ -140,7 +140,7 @@ const handleRegister = async () => {
 <style scoped>
 .auth-page {
   min-height: 100vh;
-  background: #1a2b4a;
+  background: var(--bg-gradient-1), var(--bg-gradient-2), var(--color-bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -149,9 +149,9 @@ const handleRegister = async () => {
 
 .auth-card {
   width: 400px;
-  background: #fff;
+  background: var(--color-surface);
   border-radius: 24px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--shadow-card);
   padding: 36px 34px 28px;
 }
 
@@ -164,14 +164,14 @@ const handleRegister = async () => {
   margin: 0;
   font-size: 30px;
   letter-spacing: 0.6px;
-  color: #c9a84c;
+  color: var(--color-accent);
   font-weight: 700;
 }
 
 .subtitle {
   margin-top: 8px;
   margin-bottom: 0;
-  color: #60708b;
+  color: var(--color-muted);
   font-size: 14px;
 }
 
@@ -180,22 +180,22 @@ const handleRegister = async () => {
   height: 44px;
   border-radius: 10px;
   border: none;
-  background: #1a2b4a;
+  background: var(--color-primary-strong);
 }
 
 .register-btn:hover {
-  background: #13203a;
+  filter: brightness(0.95);
 }
 
 .footer-link {
   margin-top: 6px;
   text-align: center;
-  color: #60708b;
+  color: var(--color-muted);
   font-size: 14px;
 }
 
 .footer-link a {
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-weight: 600;
   text-decoration: none;
 }

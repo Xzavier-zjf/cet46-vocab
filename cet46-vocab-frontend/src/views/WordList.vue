@@ -207,7 +207,7 @@ const loadList = async () => {
     pagination.total = total
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') {
-      ElMessage.error(error?.businessMessage || error?.message || '鍔犺浇璇嶅簱澶辫触')
+      ElMessage.error(error?.businessMessage || error?.message || '加载词库失败')
     }
   } finally {
     if (!listController?.signal?.aborted) {
@@ -249,7 +249,7 @@ const handleSpeak = (word, accent) => {
   const result = speakWord(word, accent)
   if (result.ok) return
   if (result.reason === 'unsupported') {
-    ElMessage.warning('褰撳墠娴忚鍣ㄤ笉鏀寔璇煶鎾斁')
+    ElMessage.warning('当前浏览器不支持语音播放')
   }
 }
 
@@ -264,11 +264,11 @@ const addToLearn = async (row) => {
   const currentStatus = normalizeProgressStatus(row)
   if (row.adding) return
   if (currentStatus === 'LEARNING') {
-    ElMessage.info('璇ュ崟璇嶅凡鍦ㄥ涔犱腑')
+    ElMessage.info('该单词已在学习中')
     return
   }
   if (currentStatus === 'COMPLETED') {
-    ElMessage.info('璇ュ崟璇嶅凡瀹屾垚瀛︿範')
+    ElMessage.info('该单词已完成学习')
     return
   }
 
@@ -283,7 +283,7 @@ const addToLearn = async (row) => {
     ElMessage.success('已加入学习计划')
     await loadList()
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '鍔犲叆瀛︿範澶辫触')
+    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
   } finally {
     row.adding = false
   }
@@ -301,12 +301,12 @@ const retryPendingBatch = async () => {
     })
     const queued = Number(res?.data?.queued || 0)
     if (queued > 0) {
-      ElMessage.success(`宸叉彁浜?${queued} 涓崟璇嶇殑AI閲嶈瘯浠诲姟`)
+      ElMessage.success(`已提交 ${queued} 个单词的AI重试任务`)
     } else {
-      ElMessage.info('褰撳墠娌℃湁鍙噸璇曠殑 pending 鍗曡瘝')
+      ElMessage.info('当前没有可重试的 pending 单词')
     }
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '鎵归噺閲嶈瘯澶辫触')
+    ElMessage.error(error?.businessMessage || error?.message || '批量重试失败')
   } finally {
     retryPendingLoading.value = false
   }
@@ -352,7 +352,7 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -368,7 +368,7 @@ onUnmounted(() => {
 }
 
 .reset-search-btn {
-  color: #6d7f95;
+  color: var(--color-muted);
 }
 
 .word-table {
@@ -381,7 +381,7 @@ onUnmounted(() => {
   background: transparent;
   border: 0;
   cursor: pointer;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 15px;
   font-weight: 700;
 }
@@ -397,9 +397,9 @@ onUnmounted(() => {
 }
 
 .quick-speak {
-  border: 1px solid #d7e1ee;
-  background: #fff;
-  color: #7b6730;
+  border: 1px solid var(--color-border-soft);
+  background: var(--color-surface);
+  color: var(--color-warning);
   border-radius: 12px;
   font-size: 12px;
   padding: 1px 6px;
@@ -407,29 +407,29 @@ onUnmounted(() => {
 }
 
 .learning-tag {
-  color: #b79434;
+  color: var(--color-warning);
   font-weight: 600;
 }
 
 .completed-tag {
-  color: #4caf50;
+  color: var(--color-success);
   font-weight: 700;
 }
 
 .add-btn {
-  border: 1px solid #c9a84c;
-  color: #c9a84c;
-  background: #fff;
+  border: 1px solid var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-surface);
 }
 
 .add-btn:hover {
-  border-color: #b79434;
-  color: #b79434;
+  border-color: var(--color-warning);
+  color: var(--color-warning);
 }
 
 .retry-pending-btn {
-  border-color: #1a2b4a;
-  color: #1a2b4a;
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary-strong);
 }
 
 .pager-wrap {

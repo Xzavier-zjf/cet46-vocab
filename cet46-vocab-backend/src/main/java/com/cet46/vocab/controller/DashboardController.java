@@ -120,7 +120,7 @@ public class DashboardController {
         data.put("totalLearned", totalLearned);
         data.put("masteredCount", mastered);
         int weeklyDone = weeklyReviewed == null ? 0 : weeklyReviewed;
-        data.put("weeklyReport", "本周你已完成 " + weeklyDone + " 次复习，累计掌握 " + mastered + " 个单词。继续保持，按计划复习会更稳。");
+        data.put("weeklyReport", "\u672C\u5468\u4F60\u5DF2\u5B8C\u6210 " + weeklyDone + " \u6B21\u590D\u4E60\uFF0C\u7D2F\u8BA1\u638C\u63E1 " + mastered + " \u4E2A\u5355\u8BCD\u3002\u7EE7\u7EED\u4FDD\u6301\uFF0C\u6309\u8BA1\u5212\u590D\u4E60\u4F1A\u66F4\u7A33\u3002");
         data.put("pressureAlert", pressureAlert);
         return data;
     }

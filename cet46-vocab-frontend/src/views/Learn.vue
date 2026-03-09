@@ -2,12 +2,12 @@
   <section class="learn-page">
     <section class="control-card">
       <div class="title-row">
-        <h2>浠婃棩瀛︿範</h2>
-        <el-button text @click="loadWords">鍒锋柊</el-button>
+        <h2>今日学习</h2>
+        <el-button text @click="loadWords">刷新</el-button>
       </div>
 
       <div class="control-row">
-        <span class="label">璇嶅簱</span>
+        <span class="label">词库</span>
         <el-radio-group v-model="wordType" @change="loadWords">
           <el-radio-button value="cet4">CET4</el-radio-button>
           <el-radio-button value="cet6">CET6</el-radio-button>
@@ -15,14 +15,14 @@
       </div>
 
       <div class="summary-row">
-        <span>姣忔棩鐩爣 {{ dailyTarget }} 涓</span>
-        <span>瀛︿範涓?{{ learningCount }} 涓</span>
-        <span>宸插畬鎴?{{ completedCount }} 涓</span>
+        <span>每日目标 {{ dailyTarget }} 个</span>
+        <span>学习中 {{ learningCount }} 个</span>
+        <span>已完成 {{ completedCount }} 个</span>
       </div>
     </section>
 
     <section v-loading="loading" class="list-card">
-      <div v-if="!loading && words.length === 0" class="empty-tip">鏆傛棤鍙涔犲崟璇</div>
+      <div v-if="!loading && words.length === 0" class="empty-tip">暂无可学习单词</div>
 
       <div v-for="item in words" :key="`${item.wordType}:${item.wordId}`" class="word-item">
         <div class="word-main">
@@ -32,10 +32,10 @@
         </div>
 
         <div class="word-actions">
-          <span v-if="item.isCompleted" class="completed-tag">宸插畬鎴愬涔</span>
-          <span v-else-if="item.isLearning" class="learning-tag">瀛︿範涓</span>
-          <el-button v-else size="small" :loading="item.adding" @click="addToLearn(item)">鍔犲叆瀛︿範</el-button>
-          <el-button text @click="goDetail(item)">瀛︿範璇︽儏</el-button>
+          <span v-if="item.isCompleted" class="completed-tag">已完成学习</span>
+          <span v-else-if="item.isLearning" class="learning-tag">学习中</span>
+          <el-button v-else size="small" :loading="item.adding" @click="addToLearn(item)">加入学习</el-button>
+          <el-button text @click="goDetail(item)">学习详情</el-button>
         </div>
       </div>
     </section>
@@ -103,11 +103,11 @@ const addToLearn = async (item) => {
   const currentStatus = normalizeProgressStatus(item)
   if (item.adding) return
   if (currentStatus === 'LEARNING') {
-    ElMessage.info('璇ュ崟璇嶅凡鍦ㄥ涔犱腑')
+    ElMessage.info('该单词已在学习中')
     return
   }
   if (currentStatus === 'COMPLETED') {
-    ElMessage.info('璇ュ崟璇嶅凡瀹屾垚瀛︿範')
+    ElMessage.info('该单词已完成学习')
     return
   }
 
@@ -123,7 +123,7 @@ const addToLearn = async (item) => {
     ElMessage.success('已加入学习计划')
     await loadWords()
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '鍔犲叆瀛︿範澶辫触')
+    ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
   } finally {
     item.adding = false
   }
@@ -150,7 +150,7 @@ onMounted(async () => {
 
 .control-card,
 .list-card {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -165,7 +165,7 @@ onMounted(async () => {
 
 .title-row h2 {
   margin: 0;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .control-row {
@@ -176,19 +176,19 @@ onMounted(async () => {
 }
 
 .label {
-  color: #6b7a8d;
+  color: var(--color-muted);
 }
 
 .summary-row {
   margin-top: 10px;
   display: flex;
   gap: 14px;
-  color: #4a5f79;
+  color: var(--color-muted-strong);
   font-size: 14px;
 }
 
 .word-item {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--color-border-soft);
   border-radius: 10px;
   padding: 12px;
   display: flex;
@@ -201,18 +201,18 @@ onMounted(async () => {
 }
 
 .word-main strong {
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
   font-size: 20px;
 }
 
 .phonetic {
   margin-left: 8px;
-  color: #8da0b8;
+  color: var(--color-muted-soft);
 }
 
 .word-main p {
   margin: 8px 0 0;
-  color: #2c3e50;
+  color: var(--color-text);
 }
 
 .word-actions {
@@ -224,17 +224,17 @@ onMounted(async () => {
 }
 
 .learning-tag {
-  color: #b79434;
+  color: var(--color-warning);
   font-weight: 700;
 }
 
 .completed-tag {
-  color: #4caf50;
+  color: var(--color-success);
   font-weight: 700;
 }
 
 .empty-tip {
-  color: #6c7b8f;
+  color: var(--color-muted);
   text-align: center;
   padding: 16px 0;
 }
@@ -255,6 +255,3 @@ onMounted(async () => {
   }
 }
 </style>
-
-
-

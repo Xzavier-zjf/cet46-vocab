@@ -153,9 +153,13 @@ public class WordServiceImpl implements WordService {
             wordMeta = normalizePendingWhenCloudUnavailable(wordMeta);
         }
         wordMeta = fixStuckPendingMeta(wordMeta);
+        wordMeta = fixStuckPendingExplainMeta(wordMeta);
         wordMeta = fixInconsistentGeneratedStatus(wordMeta);
         if (shouldTriggerGeneration(wordMeta, provider)) {
             llmAsyncService.generateWordContent(wordId, wordType, style, provider);
+        }
+        if (shouldTriggerExplainGeneration(wordMeta, provider)) {
+            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider);
         }
 
         String pos = wordMeta != null && StringUtils.hasText(wordMeta.getPos())
@@ -511,9 +515,7 @@ public class WordServiceImpl implements WordService {
                 .grammarUsage(resolveGrammarUsage(wordMeta.getAiExplain(), pos))
                 .explainStatus(resolveExplainStatus(wordMeta))
                 .build();
-    }
-
-    private String resolveGrammarUsage(String explain, String pos) {
+    }    private String resolveGrammarUsage(String explain, String pos) {
         if (!StringUtils.hasText(explain)) {
             return fallbackGrammarUsage(pos);
         }
@@ -523,8 +525,8 @@ public class WordServiceImpl implements WordService {
                 continue;
             }
             String trimmed = line.trim();
-            if (trimmed.startsWith("语法用法：")) {
-                return trimmed.substring("语法用法：".length()).trim();
+            if (trimmed.startsWith("\u8bed\u6cd5\u7528\u6cd5\uff1a")) {
+                return trimmed.substring("\u8bed\u6cd5\u7528\u6cd5\uff1a".length()).trim();
             }
         }
         return fallbackGrammarUsage(pos);
@@ -536,21 +538,19 @@ public class WordServiceImpl implements WordService {
         }
         String normalized = pos.toLowerCase();
         if (normalized.contains("n")) {
-            return "注意可数/不可数、单复数及冠词搭配。";
+            return "\u6ce8\u610f\u53ef\u6570/\u4e0d\u53ef\u6570\u3001\u5355\u590d\u6570\u53ca\u51a0\u8bcd\u642d\u914d\u3002";
         }
         if (normalized.contains("v")) {
-            return "关注时态变化及常见动词结构（及物/不及物、to do 或 doing）。";
+            return "\u5173\u6ce8\u65f6\u6001\u53d8\u5316\u53ca\u5e38\u89c1\u52a8\u8bcd\u7ed3\u6784\uff08\u53ca\u7269/\u4e0d\u53ca\u7269\u3001to do \u6216 doing\uff09\u3002";
         }
         if (normalized.contains("adj")) {
-            return "常作定语/表语，注意比较级和常见介词搭配。";
+            return "\u5e38\u4f5c\u5b9a\u8bed/\u8868\u8bed\uff0c\u6ce8\u610f\u6bd4\u8f83\u7ea7\u548c\u5e38\u89c1\u4ecb\u8bcd\u642d\u914d\u3002";
         }
         if (normalized.contains("adv")) {
-            return "通常修饰动词或形容词，注意句中位置。";
+            return "\u901a\u5e38\u4fee\u9970\u52a8\u8bcd\u6216\u5f62\u5bb9\u8bcd\uff0c\u6ce8\u610f\u53e5\u4e2d\u4f4d\u7f6e\u3002";
         }
-        return "关注该词在句中成分位置与固定搭配。";
-    }
-
-    private List<WordDetailResponse.SynonymItem> parseSynonyms(String synonymsJson) {
+        return "\u5173\u6ce8\u8be5\u8bcd\u5728\u53e5\u4e2d\u6210\u5206\u4f4d\u7f6e\u4e0e\u56fa\u5b9a\u642d\u914d\u3002";
+    }    private List<WordDetailResponse.SynonymItem> parseSynonyms(String synonymsJson) {
         if (!StringUtils.hasText(synonymsJson)) {
             return Collections.emptyList();
         }
@@ -717,6 +717,23 @@ public class WordServiceImpl implements WordService {
         }
     }
 
+    private WordMeta fixStuckPendingExplainMeta(WordMeta wordMeta) {
+        if (wordMeta == null || !"pending".equalsIgnoreCase(wordMeta.getAiExplainStatus())) {
+            return wordMeta;
+        }
+        if (!isPendingTimedOut(wordMeta)) {
+            return wordMeta;
+        }
+        try {
+            wordMeta.setAiExplainStatus(StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback");
+            wordMetaMapper.updateById(wordMeta);
+            return wordMeta;
+        } catch (Exception ex) {
+            log.warn("failed to fix stuck pending explain status for wordMetaId={}", wordMeta.getId(), ex);
+            return wordMeta;
+        }
+    }
+
     private WordMeta fixInconsistentGeneratedStatus(WordMeta wordMeta) {
         if (wordMeta == null) {
             return null;
@@ -767,15 +784,35 @@ public class WordServiceImpl implements WordService {
         return !(sentenceOk && synonymOk && mnemonicOk);
     }
 
+    private boolean shouldTriggerExplainGeneration(WordMeta wordMeta, String provider) {
+        if (isCloudUnavailable(provider)) {
+            return false;
+        }
+        if (wordMeta == null) {
+            return true;
+        }
+        String status = StringUtils.hasText(wordMeta.getAiExplainStatus())
+                ? wordMeta.getAiExplainStatus().toLowerCase()
+                : "";
+        if ("full".equals(status)) {
+            return !StringUtils.hasText(wordMeta.getAiExplain()) && isPendingTimedOut(wordMeta);
+        }
+        if ("pending".equals(status)) {
+            return isPendingTimedOut(wordMeta);
+        }
+        if ("fallback".equals(status) || "partial".equals(status)) {
+            return !StringUtils.hasText(wordMeta.getAiExplain()) && isPendingTimedOut(wordMeta);
+        }
+        return true;
+    }
+
     private boolean hasSynonymContent(String synonymsJson) {
         if (!StringUtils.hasText(synonymsJson)) {
             return false;
         }
         String trimmed = synonymsJson.trim();
         return !"[]".equals(trimmed) && !"null".equalsIgnoreCase(trimmed);
-    }
-
-    private WordMeta normalizePendingWhenCloudUnavailable(WordMeta wordMeta) {
+    }    private WordMeta normalizePendingWhenCloudUnavailable(WordMeta wordMeta) {
         if (wordMeta == null || !"pending".equalsIgnoreCase(wordMeta.getGenStatus())) {
             return wordMeta;
         }
@@ -789,15 +826,13 @@ public class WordServiceImpl implements WordService {
         }
         try {
             wordMeta.setGenStatus("fallback");
-            wordMeta.setSentenceZh("云端API未配置完成，请在“我的资料”完成配置后点击“重试AI生成”");
+            wordMeta.setSentenceZh("\u4e91\u7aefAPI\u672a\u914d\u7f6e\u5b8c\u6210\uff0c\u8bf7\u5728\u201c\u6211\u7684\u8d44\u6599\u201d\u5b8c\u6210\u914d\u7f6e\u540e\u70b9\u51fb\u201c\u91cd\u8bd5AI\u751f\u6210\u201d");
             wordMetaMapper.updateById(wordMeta);
         } catch (Exception ex) {
             log.warn("failed to normalize pending when cloud unavailable, wordMetaId={}", wordMeta.getId(), ex);
         }
         return wordMeta;
-    }
-
-    private record WordBase(String english, String sent, String chinese) {
+    }    private record WordBase(String english, String sent, String chinese) {
     }
 
     private String buildWordDetailCacheKey(Long userId, String style, String wordType, Long wordId) {
@@ -819,15 +854,13 @@ public class WordServiceImpl implements WordService {
                 || !StringUtils.hasText(cloudLlmProperties.getBaseUrl())
                 || !StringUtils.hasText(cloudLlmProperties.getModel())
                 || !StringUtils.hasText(cloudLlmProperties.getApiKey());
-    }
-
-    private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
+    }    private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
         return WordDetailResponse.LlmContent.builder()
                 .genStatus("fallback")
                 .style(style)
                 .sentence(new WordDetailResponse.Sentence(
                         null,
-                        "云端API未配置完成，请在“我的资料”完成配置后点击“重试AI生成”",
+                        "\u4e91\u7aefAPI\u672a\u914d\u7f6e\u5b8c\u6210\uff0c\u8bf7\u5728\u201c\u6211\u7684\u8d44\u6599\u201d\u5b8c\u6210\u914d\u7f6e\u540e\u70b9\u51fb\u201c\u91cd\u8bd5AI\u751f\u6210\u201d",
                         null))
                 .synonyms(Collections.emptyList())
                 .mnemonic(new WordDetailResponse.Mnemonic(null, null))
@@ -835,9 +868,7 @@ public class WordServiceImpl implements WordService {
                 .grammarUsage(null)
                 .explainStatus("fallback")
                 .build();
-    }
-
-    private WordDetailResponse parseCachedWordDetail(Object cached) {
+    }    private WordDetailResponse parseCachedWordDetail(Object cached) {
         if (cached == null) {
             return null;
         }

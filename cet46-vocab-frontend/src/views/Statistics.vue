@@ -58,7 +58,7 @@ onMounted(async () => {
 
 .report-card,
 .panel {
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -68,12 +68,12 @@ onMounted(async () => {
 .report-card h3,
 .panel h4 {
   margin: 0 0 12px;
-  color: #1A2B4A;
+  color: var(--color-primary-strong);
 }
 
 .report-card p {
   margin: 0;
-  color: #8896A8;
+  color: var(--color-muted-soft);
   line-height: 1.8;
 }
 

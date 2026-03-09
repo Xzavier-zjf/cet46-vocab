@@ -299,7 +299,7 @@ onUnmounted(() => {
 
 .card {
   width: min(860px, 100%);
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
@@ -308,7 +308,7 @@ onUnmounted(() => {
 
 .card h2 {
   margin: 0 0 18px;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .row {
@@ -318,7 +318,7 @@ onUnmounted(() => {
 .label {
   display: block;
   margin-bottom: 10px;
-  color: #6b7a8d;
+  color: var(--color-muted);
   font-size: 13px;
 }
 
@@ -330,7 +330,7 @@ onUnmounted(() => {
 
 .avatar-input {
   font-size: 13px;
-  color: #6b7a8d;
+  color: var(--color-muted);
 }
 
 .style-grid {
@@ -346,9 +346,9 @@ onUnmounted(() => {
 }
 
 .style-card {
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--color-border-soft);
   border-radius: 12px;
-  background: #fff;
+  background: var(--color-surface);
   padding: 14px;
   text-align: left;
   cursor: pointer;
@@ -358,16 +358,16 @@ onUnmounted(() => {
 }
 
 .style-card strong {
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .style-card small {
-  color: #8896a8;
+  color: var(--color-muted-soft);
 }
 
 .style-card.active {
-  border-color: #c9a84c;
-  background: rgba(201, 168, 76, 0.12);
+  border-color: var(--color-accent);
+  background: var(--color-warning-soft);
 }
 
 .health-actions {
@@ -378,43 +378,43 @@ onUnmounted(() => {
 }
 
 .health-btn {
-  border-color: #1a2b4a;
-  color: #1a2b4a;
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary-strong);
 }
 
 .health-summary {
-  color: #4d5c70;
+  color: var(--color-muted-strong);
   font-size: 13px;
 }
 
 .security-panel {
   margin-top: 10px;
   margin-bottom: 28px;
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--color-border-soft);
   border-radius: 12px;
   padding: 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: #f8fbff;
+  background: var(--color-surface-soft);
 }
 
 .security-text h3 {
   margin: 0;
   font-size: 15px;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .security-text p {
   margin: 6px 0 0;
   font-size: 13px;
-  color: #64748b;
+  color: var(--color-muted);
 }
 
 .save-btn {
-  background: #1a2b4a;
-  border-color: #1a2b4a;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
   color: #fff;
 }
 

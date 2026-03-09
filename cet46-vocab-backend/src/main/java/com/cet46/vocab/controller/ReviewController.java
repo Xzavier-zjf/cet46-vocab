@@ -51,7 +51,7 @@ public class ReviewController {
 
     private Long getUserId(Authentication authentication) {
         if (authentication == null || authentication.getPrincipal() == null) {
-            throw new RuntimeException("未登录");
+            throw new RuntimeException("\u672A\u767B\u5F55");
         }
         return Long.valueOf(authentication.getPrincipal().toString());
     }
