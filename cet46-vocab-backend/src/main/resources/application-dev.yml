@@ -31,7 +31,7 @@ llm:
     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     path: /chat/completions
     model: qwen-plus
-    api-key: 
+    api-key: ${LLM_CLOUD_API_KEY:${DASHSCOPE_API_KEY:${ALIYUN_DASHSCOPE_API_KEY:}}}
     timeout: 90s
     max-retries: 1
     temperature: 0.3
