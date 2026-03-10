@@ -144,10 +144,23 @@
             </el-select>
           </div>
           <div class="actions-right">
-          <el-button :disabled="loading" @click="clearCurrentSession">清空当前对话</el-button>
-          <el-button type="primary" :loading="loading" :disabled="!question.trim()" @click="send()">
-            发送
-          </el-button>
+            <el-button :disabled="loading" @click="clearCurrentSession">清空当前对话</el-button>
+            <el-button
+              v-if="loading"
+              type="warning"
+              plain
+              @click="stopCurrentReply"
+            >
+              暂停
+            </el-button>
+            <el-button
+              v-else
+              type="primary"
+              :disabled="!question.trim()"
+              @click="send()"
+            >
+              发送
+            </el-button>
           </div>
         </div>
       </div>
@@ -288,6 +301,13 @@ const loading = ref(false)
 const regeneratingMessageId = ref('')
 const learnActionLoading = ref(false)
 const llmActionLoading = ref(false)
+const EMPTY_RESPONSE_HINT = '当前内容为空，请重新生成。'
+const ABORT_REASON_MANUAL_STOP = 'manual-stop'
+const ABORT_REASON_DELETE_QUESTION = 'delete-question'
+let sendController = null
+let abortReason = ''
+let pendingSessionId = ''
+let pendingUserMessageId = null
 const question = ref('')
 const autoAskEnabled = ref(loadAutoAskSetting())
 const answerMode = ref('balanced')
@@ -540,6 +560,12 @@ function sendQuickQuestion(content) {
   send(content)
 }
 
+function stopCurrentReply() {
+  if (!loading.value || !sendController) return
+  abortReason = ABORT_REASON_MANUAL_STOP
+  sendController.abort()
+}
+
 function handleComposerKeydown(event) {
   if (event.key !== 'Enter') return
   if (event.shiftKey) return
@@ -554,10 +580,17 @@ async function send(contentOverride = '', targetSessionId = '') {
   if (targetSessionId) {
     activeSessionId.value = targetSessionId
   }
+  const requestSessionId = activeSessionId.value
+  const userMessageId = Date.now()
 
-  pushMessage({ id: Date.now(), role: 'user', content })
+  pushMessageToSession(requestSessionId, { id: userMessageId, role: 'user', content })
   question.value = ''
   loading.value = true
+  abortReason = ''
+  pendingSessionId = requestSessionId
+  pendingUserMessageId = userMessageId
+  const controller = new AbortController()
+  sendController = controller
 
   try {
     const res = await assistantChat({
@@ -565,9 +598,14 @@ async function send(contentOverride = '', targetSessionId = '') {
       answerMode: answerMode.value,
       wordContext: activeContext.value?.word ? activeContext.value : null,
       history: buildHistory()
+    }, {
+      signal: controller.signal
     })
+    if (!sessionContainsMessage(requestSessionId, userMessageId)) {
+      return
+    }
     const answer = normalizeAnswer(res?.data?.answer)
-    pushMessage({
+    pushMessageToSession(requestSessionId, {
       id: Date.now() + 1,
       role: 'assistant',
       content: answer || '我暂时没有整理出有效回答，你可以换个问法再试一次。',
@@ -575,10 +613,25 @@ async function send(contentOverride = '', targetSessionId = '') {
       continuationRounds: toSafeContinuationRounds(res?.data?.continuationRounds)
     })
   } catch (error) {
+    if (error?.code === 'ERR_CANCELED') {
+      if (abortReason === ABORT_REASON_MANUAL_STOP && sessionContainsMessage(requestSessionId, userMessageId)) {
+        pushMessageToSession(requestSessionId, {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: EMPTY_RESPONSE_HINT,
+          autoContinued: false,
+          continuationRounds: 0
+        })
+      }
+      return
+    }
+    if (!sessionContainsMessage(requestSessionId, userMessageId)) {
+      return
+    }
     const rawMessage = String(error?.message || '')
     if (error?.code === 'ECONNABORTED' || rawMessage.includes('timeout')) {
       ElMessage.warning('学习助手响应较慢，请重试一次或缩短问题后再试')
-      pushMessage({
+      pushMessageToSession(requestSessionId, {
         id: Date.now() + 1,
         role: 'assistant',
         content: '本次请求超时，未收到模型完整回复。你可以重试一次，或缩短问题后再试。若你当前使用本地模型，请在个人设置中检查“本地模型连通性”。',
@@ -587,7 +640,7 @@ async function send(contentOverride = '', targetSessionId = '') {
       })
     } else {
       ElMessage.warning(error?.businessMessage || error?.message || '学习助手暂时不可用')
-      pushMessage({
+      pushMessageToSession(requestSessionId, {
         id: Date.now() + 1,
         role: 'assistant',
         content: '本次请求失败，暂未收到模型回复。请稍后重试；若仍失败，请检查当前模型连接状态。',
@@ -596,12 +649,22 @@ async function send(contentOverride = '', targetSessionId = '') {
       })
     }
   } finally {
+    if (sendController === controller) {
+      sendController = null
+    }
+    abortReason = ''
+    pendingSessionId = ''
+    pendingUserMessageId = null
     loading.value = false
   }
 }
 
 function pushMessage(msg) {
-  const idx = sessions.value.findIndex((s) => s.id === activeSessionId.value)
+  pushMessageToSession(activeSessionId.value, msg)
+}
+
+function pushMessageToSession(sessionId, msg) {
+  const idx = sessions.value.findIndex((s) => s.id === sessionId)
   if (idx < 0) return
   sessions.value[idx].messages.push(msg)
   sessions.value[idx].updatedAt = Date.now()
@@ -612,6 +675,13 @@ function pushMessage(msg) {
     sessions.value[idx].title = msg.content.slice(0, 16)
   }
   persistState()
+}
+
+function sessionContainsMessage(sessionId, messageId) {
+  if (!sessionId || messageId == null) return false
+  const session = sessions.value.find((s) => s.id === sessionId)
+  if (!session || !Array.isArray(session.messages)) return false
+  return session.messages.some((m) => m?.id === messageId)
 }
 
 function buildHistory() {
@@ -677,12 +747,39 @@ function editUserMessage(messageId) {
 function deleteUserMessage(messageId) {
   const session = activeSession.value
   if (!session) return
-  const target = session.messages.find((m) => m.id === messageId)
+  const targetIdx = session.messages.findIndex((m) => m.id === messageId && m.role === 'user')
+  if (targetIdx < 0) return
+  const target = session.messages[targetIdx]
   if (!target || !isLatestUserMessage(target)) return
-  session.messages = session.messages.filter((m) => m.id !== messageId)
+  const deletingPendingQuestion = loading.value &&
+    !!sendController &&
+    pendingSessionId === activeSessionId.value &&
+    pendingUserMessageId === messageId
+
+  if (deletingPendingQuestion) {
+    abortReason = ABORT_REASON_DELETE_QUESTION
+    sendController.abort()
+    // Delete the pending user message and any trailing assistant output of this round.
+    session.messages = session.messages.slice(0, targetIdx)
+    session.updatedAt = Date.now()
+    session.hasInteraction = session.messages.some((m) => m?.role === 'user')
+    persistState()
+    ElMessage.success('已删除该消息并停止AI生成')
+    return
+  }
+
+  // Delete this user question and all assistant messages linked to it (until next user question).
+  const nextUserIdx = session.messages.findIndex((m, idx) => idx > targetIdx && m?.role === 'user')
+  const endExclusive = nextUserIdx >= 0 ? nextUserIdx : session.messages.length
+  const removedCount = endExclusive - targetIdx
+  session.messages = [
+    ...session.messages.slice(0, targetIdx),
+    ...session.messages.slice(endExclusive)
+  ]
   session.updatedAt = Date.now()
+  session.hasInteraction = session.messages.some((m) => m?.role === 'user')
   persistState()
-  ElMessage.success('已删除该消息')
+  ElMessage.success(removedCount > 1 ? '已删除该问题及对应回答' : '已删除该消息')
 }
 
 function setAssistantFeedback(messageId, feedback) {
