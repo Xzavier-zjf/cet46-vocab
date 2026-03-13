@@ -213,7 +213,11 @@ public class WordController {
         if (authentication == null || authentication.getPrincipal() == null) {
             return null;
         }
-        return Long.valueOf(authentication.getPrincipal().toString());
+        try {
+            return Long.valueOf(authentication.getPrincipal().toString());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private String resolveUserStyle(Long userId) {
