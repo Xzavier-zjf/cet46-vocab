@@ -47,6 +47,23 @@ class LlmResponseParserTest {
         assertEquals("CET-6", result.difficulty());
     }
 
+
+
+    @Test
+    void wrappedContentStringJsonShouldParseSuccessfully() {
+        // 测试意图：当外层 content 字段是 JSON 字符串时，解析器也应正确解包
+        String wrapped = "{" +
+                "\"content\":\"{\\\"sentenceEn\\\":\\\"Nested en\\\",\\\"sentenceZh\\\":\\\"\u5d4c\u5957\\\",\\\"difficulty\\\":\\\"CET-6\\\"}\"" +
+                "}";
+
+        LlmResponseParser.SentenceResult result = parser.parseSentence(wrapped);
+
+        assertNotNull(result);
+        assertEquals("Nested en", result.sentenceEn());
+        assertEquals("嵌套", result.sentenceZh());
+        assertEquals("CET-6", result.difficulty());
+    }
+
     @Test
     void invalidContentShouldReturnNull() {
         // 测试意图：既不是合法 JSON 也无可提取字段时返回 null

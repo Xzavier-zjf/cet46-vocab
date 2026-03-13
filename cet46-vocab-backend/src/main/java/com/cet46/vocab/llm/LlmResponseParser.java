@@ -203,8 +203,28 @@ public class LlmResponseParser {
             if (node != null && node.isObject()) {
                 return node;
             }
+            JsonNode embedded = parseEmbeddedJsonObject(node);
+            if (embedded != null) {
+                return embedded;
+            }
         }
         return root;
+    }
+
+    private JsonNode parseEmbeddedJsonObject(JsonNode node) {
+        if (node == null || !node.isTextual()) {
+            return null;
+        }
+        String text = node.asText();
+        if (!StringUtils.hasText(text)) {
+            return null;
+        }
+        try {
+            JsonNode embedded = objectMapper.readTree(text);
+            return embedded != null && embedded.isObject() ? embedded : null;
+        } catch (Exception ignore) {
+            return null;
+        }
     }
 
     private JsonNode getArrayNode(JsonNode node, String... keys) {

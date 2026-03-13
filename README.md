@@ -22,7 +22,7 @@
 cet46-vocab/
 ├─ cet46-vocab-frontend/   # Vue 前端
 ├─ cet46-vocab-backend/    # Spring Boot 后端
-├─ cet46-vocab-debase/     # 数据库 SQL
+├─ cet46-vocab-database/     # 数据库 SQL
 ├─ nginx.conf              # Nginx 反向代理示例
 └─ deploy.sh               # Linux 服务器部署脚本
 ```
@@ -41,11 +41,11 @@ cet46-vocab/
 ### 1. 初始化数据库
 
 1. 创建数据库：`cet46_vocab`
-2. 导入 SQL：`cet46-vocab-debase/cet46_vocab.sql`
+2. 导入 SQL：`cet46-vocab-database/cet46_vocab.sql`
 
 ### 2. 配置后端
 
-编辑文件：`cet46-vocab-backend/src/main/resources/application-dev.yml`
+编辑文件：`cet46-vocab-backend/src/main/resources/application.yml`
 
 主要关注以下配置：
 
@@ -102,7 +102,7 @@ mvn clean package -DskipTests
 
 ## 提交到仓库前建议
 
-- 将 `application-dev.yml` 中敏感信息（数据库密码、Redis 密码、云端 API Key）替换为占位符
+- 将配置文件（如 `application.yml` / `application-*.yml`）中的敏感信息（数据库密码、Redis 密码、云端 API Key）替换为占位符
 - 增加本地私有配置文件（如 `application-local.yml`），避免提交真实凭据
 - 检查 `git status`，确认不提交日志文件与本地运行产物
 
