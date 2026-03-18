@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="dashboard-page">
     <template v-if="loading">
       <div class="overview-grid">
@@ -65,9 +65,9 @@
       </div>
 
       <div class="quick-actions">
-        <el-button class="quick-btn primary" @click="go('/review')">开始复习</el-button>
-        <el-button class="quick-btn" @click="go('/words')">浏览词库</el-button>
-        <el-button class="quick-btn" @click="go('/quiz')">模拟测验</el-button>
+        <BtnPrimary class="quick-btn" @click="go('/review')">开始复习</BtnPrimary>
+        <BtnPrimary class="quick-btn" @click="go('/words')">浏览词库</BtnPrimary>
+        <BtnPrimary class="quick-btn" @click="go('/quiz')">模拟测验</BtnPrimary>
       </div>
     </template>
   </section>
@@ -80,6 +80,7 @@ import { useDashboardStore } from '@/stores/dashboard'
 import PressureAlert from '@/components/dashboard/PressureAlert.vue'
 import RingChart from '@/components/dashboard/RingChart.vue'
 import WeeklyReport from '@/components/dashboard/WeeklyReport.vue'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const dashboardStore = useDashboardStore()
@@ -198,13 +199,7 @@ onMounted(async () => {
   min-width: 124px;
   height: 42px;
   border-radius: 10px;
-  border-color: var(--color-border);
-}
-
-.quick-btn.primary {
-  background: var(--color-primary-strong);
-  color: #fff;
-  border-color: var(--color-primary-strong);
+  font-weight: 700;
 }
 
 @media (max-width: 1100px) {

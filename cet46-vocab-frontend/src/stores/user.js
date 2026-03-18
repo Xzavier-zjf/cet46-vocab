@@ -6,6 +6,7 @@ export const useUserStore = defineStore('user', {
   state: () => ({
     token: getToken() || '',
     userId: null,
+    username: '',
     nickname: '',
     avatar: '',
     role: '',
@@ -18,6 +19,7 @@ export const useUserStore = defineStore('user', {
       const data = loginResponse || {}
       this.token = data.token || ''
       this.userId = data.userId ?? null
+      this.username = data.username || ''
       this.nickname = data.nickname || ''
       this.avatar = data.avatar || ''
       this.role = data.role || ''
@@ -31,6 +33,7 @@ export const useUserStore = defineStore('user', {
     clearUserInfo() {
       this.token = ''
       this.userId = null
+      this.username = ''
       this.nickname = ''
       this.avatar = ''
       this.role = ''
@@ -43,6 +46,7 @@ export const useUserStore = defineStore('user', {
       const res = await request.get('/user/info')
       if (res?.code === 200 && res.data) {
         this.userId = res.data.userId ?? this.userId
+        this.username = res.data.username || ''
         this.nickname = res.data.nickname || ''
         this.avatar = res.data.avatar || ''
         this.role = res.data.role || ''

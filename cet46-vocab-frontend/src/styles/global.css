@@ -84,3 +84,74 @@ body {
 #app {
   min-height: 100vh;
 }
+
+.btn-cta.el-button,
+.btn-cta {
+  background: linear-gradient(135deg, #1f3560, #2f4f83) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 42%, #1f3560) !important;
+  color: #ffffff !important;
+  --el-button-text-color: #ffffff;
+  --el-button-hover-text-color: #ffffff;
+  --el-button-active-text-color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(20, 34, 58, 0.24);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.btn-cta.el-button:hover,
+.btn-cta:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.btn-cta.el-button:active,
+.btn-cta:active {
+  transform: translateY(0);
+  filter: brightness(0.97);
+}
+
+.btn-cta.el-button:focus-visible,
+.btn-cta:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 72%, #ffffff 28%);
+  outline-offset: 2px;
+}
+
+:root.dark .btn-cta.el-button,
+:root.dark .btn-cta {
+  background: linear-gradient(135deg, #1b2d4d, #2a426b) !important;
+  border-color: color-mix(in srgb, var(--color-accent) 58%, #1b2d4d) !important;
+  color: #f8fbff !important;
+  --el-button-text-color: #f8fbff;
+  --el-button-hover-text-color: #ffffff;
+  --el-button-active-text-color: #ffffff;
+  box-shadow: 0 10px 24px rgba(3, 10, 22, 0.58);
+}
+
+.btn-secondary.el-button,
+.btn-secondary {
+  background: var(--color-surface-soft) !important;
+  border-color: var(--color-border-soft) !important;
+  color: var(--color-text) !important;
+  --el-button-text-color: var(--color-text);
+  --el-button-hover-text-color: var(--color-text);
+  --el-button-active-text-color: var(--color-text);
+  font-weight: 600;
+  transition: transform 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
+}
+
+.btn-secondary.el-button:hover,
+.btn-secondary:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border-soft)) !important;
+}
+
+.btn-secondary.el-button:active,
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary.el-button:focus-visible,
+.btn-secondary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-accent) 65%, #ffffff 35%);
+  outline-offset: 2px;
+}

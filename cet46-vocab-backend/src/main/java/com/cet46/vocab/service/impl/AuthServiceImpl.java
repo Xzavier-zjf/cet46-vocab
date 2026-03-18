@@ -85,6 +85,7 @@ public class AuthServiceImpl implements AuthService {
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
         result.put("userId", user.getId());
+        result.put("username", user.getUsername());
         result.put("nickname", user.getNickname());
         result.put("role", user.getRole());
         result.put("llmStyle", user.getLlmStyle());

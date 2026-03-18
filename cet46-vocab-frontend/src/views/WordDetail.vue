@@ -3,7 +3,7 @@
     <section v-if="invalidParam" class="state-card">
       <h3>参数无效</h3>
       <p>请从词库列表重新进入该单词详情页。</p>
-      <el-button class="back-btn" @click="goBackToWords">返回</el-button>
+      <BtnSecondary class="back-btn" @click="goBackToWords">返回</BtnSecondary>
     </section>
 
     <section v-else-if="loading" class="state-card">
@@ -13,7 +13,7 @@
     <section v-else-if="emptyData" class="state-card">
       <h3>未找到该单词</h3>
       <p>该词条可能不存在或类型参数不匹配，请返回词库页重试。</p>
-      <el-button class="back-btn" @click="goBackToWords">返回</el-button>
+      <BtnSecondary class="back-btn" @click="goBackToWords">返回</BtnSecondary>
     </section>
 
     <template v-else>
@@ -30,29 +30,30 @@
         </div>
 
         <div class="action-group">
-          <el-button
+          <ProgressBadge :status="progressStatus" />
+          <BtnSecondary
             class="assistant-btn"
             :disabled="invalidParam || emptyData"
             @click="goAskAssistant"
           >
             问学习助手
-          </el-button>
-          <el-button
+          </BtnSecondary>
+          <BtnPrimary
             class="learn-btn"
             :disabled="progressStatus !== 'NOT_LEARNING' || addLoading"
             :loading="addLoading"
             @click="handleAddLearn"
           >
             {{ statusText }}
-          </el-button>
-          <el-button
+          </BtnPrimary>
+          <BtnSecondary
             class="retry-btn"
             :loading="retryLoading"
             :disabled="retryLoading || invalidParam || emptyData"
             @click="handleRetryGenerate"
           >
             重试AI生成
-          </el-button>
+          </BtnSecondary>
         </div>
       </div>
 
@@ -78,6 +79,10 @@ import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import WordMetaPanel from '@/components/word/WordMetaPanel.vue'
 import { speakWord } from '@/utils/speech'
+import { WORD_PROGRESS, getProgressMeta } from '@/constants/wordProgress'
+import ProgressBadge from '@/components/common/ProgressBadge.vue'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -121,8 +126,8 @@ const explainPolling = ref(false)
 
 const progressStatus = computed(() => detail.progress?.status || 'NOT_LEARNING')
 const statusText = computed(() => {
-  if (progressStatus.value === 'COMPLETED') return '已完成学习'
-  if (progressStatus.value === 'LEARNING') return '学习中'
+  if (progressStatus.value === WORD_PROGRESS.COMPLETED) return '已完成学习'
+  if (progressStatus.value === WORD_PROGRESS.LEARNING) return getProgressMeta(progressStatus.value).label
   return '加入学习'
 })
 const displayGenStatus = computed(() => detail.llmContent?.genStatus || 'pending')
@@ -484,9 +489,7 @@ onUnmounted(() => {
 }
 
 .learn-btn {
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
-  color: #fff;
+  font-weight: 700;
 }
 
 .learn-btn:disabled {
@@ -496,14 +499,11 @@ onUnmounted(() => {
 }
 
 .retry-btn {
-  border-color: var(--color-primary-strong);
-  color: var(--color-primary-strong);
+  font-weight: 600;
 }
 
 .assistant-btn {
-  border-color: var(--color-accent);
-  color: var(--color-warning);
-  background: var(--color-warning-soft);
+  font-weight: 600;
 }
 
 .meaning-card {

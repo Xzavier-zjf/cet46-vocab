@@ -36,14 +36,14 @@
           <el-input v-model="form.nickname" placeholder="输入昵称（可选）" />
         </el-form-item>
         <el-form-item>
-          <el-button
+          <BtnPrimary
             class="register-btn"
             :loading="loading"
             type="primary"
             @click="handleRegister"
           >
             注册并登录
-          </el-button>
+          </BtnPrimary>
         </el-form-item>
       </el-form>
 
@@ -61,6 +61,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login, register } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -179,12 +180,7 @@ const handleRegister = async () => {
   width: 100%;
   height: 44px;
   border-radius: 10px;
-  border: none;
-  background: var(--color-primary-strong);
-}
-
-.register-btn:hover {
-  filter: brightness(0.95);
+  font-weight: 700;
 }
 
 .footer-link {

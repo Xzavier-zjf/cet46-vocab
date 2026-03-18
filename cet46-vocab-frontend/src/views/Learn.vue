@@ -7,22 +7,21 @@
       </div>
 
       <div class="control-row">
-        <span class="label">词库</span>
+        <span class="label">词库类型</span>
         <el-radio-group v-model="wordType" @change="loadWords">
-          <el-radio-button value="cet4">CET4</el-radio-button>
-          <el-radio-button value="cet6">CET6</el-radio-button>
+          <el-radio-button v-for="item in WORD_TYPE_OPTIONS_ZH" :key="item.value" :value="item.value">{{ item.label }}</el-radio-button>
         </el-radio-group>
       </div>
 
       <div class="summary-row">
-        <span>每日目标 {{ dailyTarget }} 个</span>
-        <span>学习中 {{ learningCount }} 个</span>
-        <span>已完成 {{ completedCount }} 个</span>
+        <span>每日目标 {{ dailyTarget }}</span>
+        <span>学习中 {{ learningCount }}</span>
+        <span>已完成 {{ completedCount }}</span>
       </div>
     </section>
 
     <section v-loading="loading" class="list-card">
-      <div v-if="!loading && words.length === 0" class="empty-tip">暂无可学习单词</div>
+      <div v-if="!loading && words.length === 0" class="empty-tip">当前词库暂无单词</div>
 
       <div v-for="item in words" :key="`${item.wordType}:${item.wordId}`" class="word-item">
         <div class="word-main">
@@ -32,10 +31,16 @@
         </div>
 
         <div class="word-actions">
-          <span v-if="item.isCompleted" class="completed-tag">已完成学习</span>
-          <span v-else-if="item.isLearning" class="learning-tag">学习中</span>
-          <el-button v-else size="small" :loading="item.adding" @click="addToLearn(item)">加入学习</el-button>
-          <el-button text @click="goDetail(item)">学习详情</el-button>
+          <ProgressBadge :status="item.progressStatus" />
+          <BtnPrimary
+            v-if="item.progressStatus === WORD_PROGRESS.NOT_LEARNING"
+            size="small"
+            :loading="item.adding"
+            @click="addToLearn(item)"
+          >
+            加入学习
+          </BtnPrimary>
+          <el-button text @click="goDetail(item)">查看详情</el-button>
         </div>
       </div>
     </section>
@@ -48,25 +53,21 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { useUserStore } from '@/stores/user'
+import { WORD_TYPE_OPTIONS_ZH, WORD_TYPES } from '@/constants/wordTypes'
+import { WORD_PROGRESS, normalizeProgressStatus } from '@/constants/wordProgress'
+import ProgressBadge from '@/components/common/ProgressBadge.vue'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 
 const loading = ref(false)
 const words = ref([])
-const wordType = ref('cet4')
+const wordType = ref(WORD_TYPES.CET4)
 
 const dailyTarget = computed(() => Number(userStore.dailyTarget || 20))
 const learningCount = computed(() => words.value.filter((item) => item.isLearning && !item.isCompleted).length)
 const completedCount = computed(() => words.value.filter((item) => item.isCompleted).length)
-
-const normalizeProgressStatus = (item) => {
-  const raw = String(item?.progressStatus || '').trim().toUpperCase()
-  if (raw === 'COMPLETED' || raw === 'LEARNING' || raw === 'NOT_LEARNING') {
-    return raw
-  }
-  return item?.isLearning ? 'LEARNING' : 'NOT_LEARNING'
-}
 
 const mapWordStatus = (list) =>
   list.map((item) => {
@@ -74,8 +75,8 @@ const mapWordStatus = (list) =>
     return {
       ...item,
       progressStatus,
-      isLearning: progressStatus === 'LEARNING',
-      isCompleted: progressStatus === 'COMPLETED',
+      isLearning: progressStatus === WORD_PROGRESS.LEARNING,
+      isCompleted: progressStatus === WORD_PROGRESS.COMPLETED,
       adding: false
     }
   })
@@ -93,7 +94,7 @@ const loadWords = async () => {
     const list = Array.isArray(res?.data?.list) ? res.data.list : []
     words.value = mapWordStatus(list)
   } catch (error) {
-    ElMessage.error(error?.businessMessage || error?.message || '加载今日学习失败')
+    ElMessage.error(error?.businessMessage || error?.message || '加载失败')
   } finally {
     loading.value = false
   }
@@ -102,12 +103,12 @@ const loadWords = async () => {
 const addToLearn = async (item) => {
   const currentStatus = normalizeProgressStatus(item)
   if (item.adding) return
-  if (currentStatus === 'LEARNING') {
+  if (currentStatus === WORD_PROGRESS.LEARNING) {
     ElMessage.info('该单词已在学习中')
     return
   }
-  if (currentStatus === 'COMPLETED') {
-    ElMessage.info('该单词已完成学习')
+  if (currentStatus === WORD_PROGRESS.COMPLETED) {
+    ElMessage.info('该单词已完成')
     return
   }
 
@@ -118,9 +119,9 @@ const addToLearn = async (item) => {
       params: { wordId: item.wordId, wordType: item.wordType }
     })
     item.progressStatus = normalizeProgressStatus({ progressStatus: statusRes?.data?.status, isLearning: true })
-    item.isLearning = item.progressStatus === 'LEARNING'
-    item.isCompleted = item.progressStatus === 'COMPLETED'
-    ElMessage.success('已加入学习计划')
+    item.isLearning = item.progressStatus === WORD_PROGRESS.LEARNING
+    item.isCompleted = item.progressStatus === WORD_PROGRESS.COMPLETED
+    ElMessage.success('已加入学习')
     await loadWords()
   } catch (error) {
     ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
@@ -223,16 +224,6 @@ onMounted(async () => {
   gap: 8px;
 }
 
-.learning-tag {
-  color: var(--color-warning);
-  font-weight: 700;
-}
-
-.completed-tag {
-  color: var(--color-success);
-  font-weight: 700;
-}
-
 .empty-tip {
   color: var(--color-muted);
   text-align: center;
@@ -255,3 +246,5 @@ onMounted(async () => {
   }
 }
 </style>
+
+

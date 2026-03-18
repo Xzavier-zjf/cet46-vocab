@@ -15,6 +15,9 @@ public class ReviewCardResponse {
     private String english;
     private String phonetic;
     private String chinese;
+    private String pos;
+    private String sentenceEn;
+    private String sentenceZh;
     private Double easiness;
     private Integer interval;
     private Integer repetition;

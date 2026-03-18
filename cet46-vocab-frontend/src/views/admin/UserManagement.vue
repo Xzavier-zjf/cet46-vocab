@@ -35,7 +35,7 @@
           @keyup.enter="handleSearch"
           @clear="handleSearch"
         />
-        <el-button type="primary" :loading="loading" @click="handleSearch">查询</el-button>
+        <BtnPrimary :loading="loading" @click="handleSearch">查询</BtnPrimary>
       </div>
 
       <el-table :data="rows" v-loading="loading" size="small">
@@ -60,7 +60,7 @@
         <el-table-column prop="createdAt" label="注册时间" min-width="180" />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openResetPassword(row)">重置密码</el-button>
+            <BtnSecondary size="small" @click="openResetPassword(row)">重置密码</BtnSecondary>
             <el-button size="small" type="danger" @click="removeUser(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -86,6 +86,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/api/request'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const loading = ref(false)
 const keyword = ref('')

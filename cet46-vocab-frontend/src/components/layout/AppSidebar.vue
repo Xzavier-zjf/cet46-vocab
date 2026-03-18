@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <header class="top-nav">
     <div class="brand">CET词库</div>
 
@@ -76,7 +76,7 @@ const userStore = useUserStore()
 const themeStore = useThemeStore()
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
 
-const displayName = computed(() => userStore.nickname || '同学')
+const displayName = computed(() => userStore.nickname || userStore.username || '同学')
 const avatarText = computed(() => (displayName.value || '同').slice(0, 1))
 const isDark = computed(() => themeStore.isDark)
 

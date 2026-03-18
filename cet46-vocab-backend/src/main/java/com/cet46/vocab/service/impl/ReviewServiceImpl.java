@@ -2,16 +2,21 @@ package com.cet46.vocab.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cet46.vocab.algorithm.SM2Algorithm;
+import com.cet46.vocab.common.WordType;
 import com.cet46.vocab.dto.request.ReviewSubmitRequest;
 import com.cet46.vocab.dto.response.ReviewCardResponse;
 import com.cet46.vocab.entity.Cet4Word;
 import com.cet46.vocab.entity.Cet6Word;
 import com.cet46.vocab.entity.ReviewLog;
+import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.UserWordProgress;
+import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.ReviewLogMapper;
+import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.mapper.UserWordProgressMapper;
+import com.cet46.vocab.mapper.WordMetaMapper;
 import com.cet46.vocab.service.ReviewService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +43,8 @@ public class ReviewServiceImpl implements ReviewService {
     private final ReviewLogMapper reviewLogMapper;
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
+    private final WordMetaMapper wordMetaMapper;
+    private final UserMapper userMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final JdbcTemplate jdbcTemplate;
 
@@ -45,12 +52,16 @@ public class ReviewServiceImpl implements ReviewService {
                              ReviewLogMapper reviewLogMapper,
                              Cet4WordMapper cet4WordMapper,
                              Cet6WordMapper cet6WordMapper,
+                             WordMetaMapper wordMetaMapper,
+                             UserMapper userMapper,
                              RedisTemplate<String, Object> redisTemplate,
                              JdbcTemplate jdbcTemplate) {
         this.userWordProgressMapper = userWordProgressMapper;
         this.reviewLogMapper = reviewLogMapper;
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
+        this.wordMetaMapper = wordMetaMapper;
+        this.userMapper = userMapper;
         this.redisTemplate = redisTemplate;
         this.jdbcTemplate = jdbcTemplate;
     }
@@ -58,18 +69,23 @@ public class ReviewServiceImpl implements ReviewService {
     @Override
     public List<ReviewCardResponse> getTodayReviewList(Long userId) {
         List<UserWordProgress> progresses = loadReviewQueue(userId);
+        String style = resolveUserStyle(userId);
         List<ReviewCardResponse> list = new ArrayList<>();
         for (UserWordProgress progress : progresses) {
             WordBase wordBase = loadWordBase(progress.getWordId(), progress.getWordType());
             if (wordBase == null) {
                 continue;
             }
+            WordMeta wordMeta = selectWordMetaSafely(progress.getWordId(), progress.getWordType(), style);
             list.add(ReviewCardResponse.builder()
                     .wordId(progress.getWordId())
                     .wordType(progress.getWordType())
                     .english(wordBase.english)
                     .phonetic(wordBase.phonetic)
                     .chinese(wordBase.chinese)
+                    .pos(wordMeta == null ? null : wordMeta.getPos())
+                    .sentenceEn(wordMeta == null ? null : wordMeta.getSentenceEn())
+                    .sentenceZh(wordMeta == null ? null : wordMeta.getSentenceZh())
                     .easiness(progress.getEasiness())
                     .interval(progress.getInterval())
                     .repetition(progress.getRepetition())
@@ -153,23 +169,39 @@ public class ReviewServiceImpl implements ReviewService {
         if (!StringUtils.hasText(wordType) || wordId == null) {
             return null;
         }
-        if ("cet4".equalsIgnoreCase(wordType)) {
+        WordType type = WordType.from(wordType);
+        if (type == null) {
+            return null;
+        }
+        if (type == WordType.CET4) {
             Cet4Word word = cet4WordMapper.selectById(wordId);
             if (word == null) {
                 return null;
             }
             return new WordBase(word.getEnglish(), word.getSent(), word.getChinese());
         }
-        if ("cet6".equalsIgnoreCase(wordType)) {
+        if (type == WordType.CET6) {
             Cet6Word word = cet6WordMapper.selectById(wordId);
             if (word == null) {
                 return null;
             }
             return new WordBase(word.getEnglish(), word.getSent(), word.getChinese());
         }
-        return null;
-    }
 
+        List<java.util.Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT english, sent, chinese FROM " + type.tableName() + " WHERE id = ? LIMIT 1",
+                wordId
+        );
+        if (rows.isEmpty()) {
+            return null;
+        }
+        java.util.Map<String, Object> row = rows.get(0);
+        return new WordBase(
+                row.get("english") == null ? "" : String.valueOf(row.get("english")),
+                row.get("sent") == null ? "" : String.valueOf(row.get("sent")),
+                row.get("chinese") == null ? "" : String.valueOf(row.get("chinese"))
+        );
+    }
     private List<UserWordProgress> loadReviewQueue(Long userId) {
         try {
             List<UserWordProgress> dueToday = userWordProgressMapper.selectTodayReview(userId);
@@ -183,6 +215,30 @@ public class ReviewServiceImpl implements ReviewService {
         }
     }
 
+    private WordMeta selectWordMetaSafely(Long wordId, String wordType, String style) {
+        try {
+            return wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+        } catch (DataAccessException ex) {
+            log.warn("failed to query word_meta for wordId={}, wordType={}, style={}", wordId, wordType, style, ex);
+            return null;
+        }
+    }
+
+    private String resolveUserStyle(Long userId) {
+        try {
+            User user = userMapper.selectById(userId);
+            if (user == null || !StringUtils.hasText(user.getLlmStyle())) {
+                return "story";
+            }
+            return user.getLlmStyle();
+        } catch (DataAccessException ex) {
+            log.warn("failed to query user style for userId={}", userId, ex);
+            return "story";
+        }
+    }
+
     private record WordBase(String english, String phonetic, String chinese) {
     }
 }
+
+

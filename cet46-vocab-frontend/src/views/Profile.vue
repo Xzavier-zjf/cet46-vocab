@@ -4,6 +4,11 @@
       <h2>我的资料</h2>
 
       <div class="row">
+        <span class="label">用户名</span>
+        <el-input :model-value="form.username" readonly disabled />
+      </div>
+
+      <div class="row">
         <span class="label">头像</span>
         <div class="avatar-row">
           <el-avatar :size="72" :src="avatarPreview || userStore.avatar || undefined">
@@ -53,7 +58,7 @@
       <div class="row">
         <span class="label">本地连通自检</span>
         <div class="health-actions">
-          <el-button class="health-btn" :loading="localHealthChecking" @click="checkLocalHealth">一键检测本地模型</el-button>
+          <BtnSecondary class="health-btn" :loading="localHealthChecking" @click="checkLocalHealth">一键检测本地模型</BtnSecondary>
           <span v-if="localHealthResult" class="health-summary">
             {{ localHealthResult.message }}
             <template v-if="localHealthResult.latencyMs">（{{ localHealthResult.latencyMs }}ms）</template>
@@ -64,7 +69,7 @@
       <div class="row">
         <span class="label">云端连通自检</span>
         <div class="health-actions">
-          <el-button class="health-btn" :loading="cloudHealthChecking" @click="checkCloudHealth">一键检测云端API</el-button>
+          <BtnSecondary class="health-btn" :loading="cloudHealthChecking" @click="checkCloudHealth">一键检测云端 API</BtnSecondary>
           <span v-if="cloudHealthResult" class="health-summary">
             {{ cloudHealthResult.message }}
             <template v-if="cloudHealthResult.latencyMs">（{{ cloudHealthResult.latencyMs }}ms）</template>
@@ -82,10 +87,10 @@
           <h3>账号安全</h3>
           <p>定期更新密码可以提高账号安全性。</p>
         </div>
-        <el-button class="health-btn" @click="openPasswordDialog">修改密码</el-button>
+        <BtnSecondary class="health-btn" @click="openPasswordDialog">修改密码</BtnSecondary>
       </div>
 
-      <el-button class="save-btn" :loading="saving" @click="saveAll">保存设置</el-button>
+      <BtnPrimary class="save-btn" :loading="saving" @click="saveAll">保存设置</BtnPrimary>
     </section>
 
     <el-dialog
@@ -107,8 +112,8 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="passwordDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="pwdSaving" @click="changePassword">确认修改</el-button>
+        <BtnSecondary @click="passwordDialogVisible = false">取消</BtnSecondary>
+        <BtnPrimary :loading="pwdSaving" @click="changePassword">确认修改</BtnPrimary>
       </template>
     </el-dialog>
   </section>
@@ -119,6 +124,8 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { useUserStore } from '@/stores/user'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const userStore = useUserStore()
 const saving = ref(false)
@@ -140,10 +147,11 @@ const styles = [
 
 const providers = [
   { value: 'local', title: '本地模型', desc: 'Ollama 本地推理' },
-  { value: 'cloud', title: '云端API', desc: '云模型效果更稳' }
+  { value: 'cloud', title: '云端 API', desc: '云模型效果更稳定' }
 ]
 
 const form = reactive({
+  username: '',
   nickname: '',
   llmStyle: 'story',
   llmProvider: 'local',
@@ -156,10 +164,11 @@ const pwdForm = reactive({
   confirmPassword: ''
 })
 
-const avatarText = computed(() => (form.nickname || userStore.nickname || '我').slice(0, 1))
+const avatarText = computed(() => (form.nickname || form.username || userStore.nickname || userStore.username || '我').slice(0, 1))
 const isAdmin = computed(() => userStore.role === 'ADMIN')
 
 const syncFromStore = () => {
+  form.username = userStore.username || ''
   form.nickname = userStore.nickname || ''
   form.llmStyle = userStore.llmStyle || 'story'
   form.llmProvider = userStore.llmProvider || 'local'
@@ -215,6 +224,7 @@ const saveAll = async () => {
       profileForm.append('avatar', avatarFile.value)
     }
     await request.post('/user/profile', profileForm)
+
     const preferencePayload = {
       llmStyle: form.llmStyle,
       llmProvider: form.llmProvider
@@ -223,6 +233,7 @@ const saveAll = async () => {
       preferencePayload.dailyTarget = form.dailyTarget
     }
     await request.put('/user/preference', preferencePayload)
+
     await userStore.fetchUserInfo()
     syncFromStore()
     avatarFile.value = null
@@ -378,8 +389,7 @@ onUnmounted(() => {
 }
 
 .health-btn {
-  border-color: var(--color-primary-strong);
-  color: var(--color-primary-strong);
+  font-weight: 600;
 }
 
 .health-summary {
@@ -413,9 +423,7 @@ onUnmounted(() => {
 }
 
 .save-btn {
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
-  color: #fff;
+  font-weight: 700;
 }
 
 @media (max-width: 900px) {
@@ -430,4 +438,3 @@ onUnmounted(() => {
   }
 }
 </style>
-

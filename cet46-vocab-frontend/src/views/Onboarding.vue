@@ -18,7 +18,7 @@
         </div>
       </article>
 
-      <el-button class="submit-btn" :loading="submitting" @click="submitTest">完成并进入首页</el-button>
+      <BtnPrimary class="submit-btn" :loading="submitting" @click="submitTest">完成并进入首页</BtnPrimary>
 
       <section class="provider-section">
         <h3>AI来源</h3>
@@ -44,6 +44,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { useUserStore } from '@/stores/user'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -186,9 +187,7 @@ const submitTest = async () => {
 
 .submit-btn {
   margin-top: 10px;
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
-  color: #fff;
+  font-weight: 700;
 }
 
 .provider-section {

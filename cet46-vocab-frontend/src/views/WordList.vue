@@ -1,9 +1,8 @@
-﻿<template>
+<template>
   <section class="word-list-page">
     <div class="filter-bar">
       <el-radio-group v-model="query.type" @change="onFilterChange">
-        <el-radio-button value="cet4">CET4</el-radio-button>
-        <el-radio-button value="cet6">CET6</el-radio-button>
+        <el-radio-button v-for="item in WORD_TYPE_OPTIONS_ZH" :key="item.value" :value="item.value">{{ item.label }}</el-radio-button>
       </el-radio-group>
 
       <el-input
@@ -14,10 +13,10 @@
         @clear="onKeywordClear"
       />
       <el-button v-if="hasKeyword" text class="reset-search-btn" @click="resetKeywordSearch">
-        返回全部
+        重置
       </el-button>
 
-      <el-select v-model="query.pos" class="pos-select" placeholder="词性筛选" @change="onFilterChange">
+      <el-select v-model="query.pos" class="pos-select" placeholder="词性" @change="onFilterChange">
         <el-option label="全部词性" value="" />
         <el-option label="v." value="v" />
         <el-option label="n." value="n" />
@@ -26,41 +25,37 @@
         <el-option label="其他" value="other" />
       </el-select>
 
-      <el-button
-        class="retry-pending-btn"
-        :loading="retryPendingLoading"
-        @click="retryPendingBatch"
-      >
-        批量重试AI
-      </el-button>
+      <BtnSecondary class="retry-pending-btn" :loading="retryPendingLoading" @click="retryPendingBatch">
+        批量重试 AI
+      </BtnSecondary>
     </div>
 
     <el-table v-loading="loading" :data="tableData" class="word-table" border>
-      <el-table-column label="英文单词" min-width="200">
+      <el-table-column label="单词" min-width="200">
         <template #default="scope">
           <div class="word-cell">
             <button class="word-link" @click="goDetail(scope.row)">{{ scope.row.english }}</button>
-            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'uk')">🔊英</button>
-            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'us')">🔊美</button>
+            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'uk')">UK</button>
+            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'us')">US</button>
           </div>
         </template>
       </el-table-column>
       <el-table-column label="音标" prop="phonetic" min-width="160" />
       <el-table-column label="中文释义" prop="chinese" min-width="320" show-overflow-tooltip />
       <el-table-column label="词性" prop="pos" width="110" />
-      <el-table-column label="操作" width="130" fixed="right">
+      <el-table-column label="操作" width="170" fixed="right">
         <template #default="scope">
-          <span v-if="scope.row.progressStatus === 'COMPLETED'" class="completed-tag">已完成学习</span>
-          <span v-else-if="scope.row.progressStatus === 'LEARNING'" class="learning-tag">学习中</span>
-          <el-button
-            v-else
-            class="add-btn"
-            size="small"
-            :loading="scope.row.adding"
-            @click="addToLearn(scope.row)"
-          >
-            加入学习
-          </el-button>
+          <div class="operation-stack">
+            <ProgressBadge :status="scope.row.progressStatus" />
+            <BtnPrimary
+              v-if="scope.row.progressStatus === WORD_PROGRESS.NOT_LEARNING"
+              size="small"
+              :loading="scope.row.adding"
+              @click="addToLearn(scope.row)"
+            >
+              加入学习
+            </BtnPrimary>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -87,6 +82,11 @@ import { ElMessage } from 'element-plus'
 import request from '@/api/request'
 import { speakWord } from '@/utils/speech'
 import { useDashboardStore } from '@/stores/dashboard'
+import { WORD_TYPE_OPTIONS_ZH, WORD_TYPES, normalizeWordType } from '@/constants/wordTypes'
+import { WORD_PROGRESS, normalizeProgressStatus } from '@/constants/wordProgress'
+import ProgressBadge from '@/components/common/ProgressBadge.vue'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -97,7 +97,7 @@ const retryPendingLoading = ref(false)
 const tableData = ref([])
 
 const query = reactive({
-  type: 'cet4',
+  type: WORD_TYPES.CET4,
   keyword: '',
   pos: ''
 })
@@ -118,10 +118,7 @@ const parsePositiveInt = (value, fallback) => {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
 }
 
-const normalizeType = (value) => {
-  const type = String(value || '').toLowerCase()
-  return type === 'cet6' ? 'cet6' : 'cet4'
-}
+const normalizeType = (value) => normalizeWordType(value, WORD_TYPES.CET4)
 
 const syncStateFromRoute = () => {
   query.type = normalizeType(route.query.type)
@@ -159,14 +156,6 @@ const isOtherPos = (posValue) => {
     .filter(Boolean)
   if (!parts.length) return true
   return parts.every((part) => !set.has(part))
-}
-
-const normalizeProgressStatus = (item) => {
-  const raw = String(item?.progressStatus || '').trim().toUpperCase()
-  if (raw === 'COMPLETED' || raw === 'LEARNING' || raw === 'NOT_LEARNING') {
-    return raw
-  }
-  return item?.isLearning ? 'LEARNING' : 'NOT_LEARNING'
 }
 
 const loadList = async () => {
@@ -207,7 +196,7 @@ const loadList = async () => {
     pagination.total = total
   } catch (error) {
     if (error?.code !== 'ERR_CANCELED') {
-      ElMessage.error(error?.businessMessage || error?.message || '加载词库失败')
+      ElMessage.error(error?.businessMessage || error?.message || '加载失败')
     }
   } finally {
     if (!listController?.signal?.aborted) {
@@ -263,12 +252,12 @@ const goDetail = (row) => {
 const addToLearn = async (row) => {
   const currentStatus = normalizeProgressStatus(row)
   if (row.adding) return
-  if (currentStatus === 'LEARNING') {
+  if (currentStatus === WORD_PROGRESS.LEARNING) {
     ElMessage.info('该单词已在学习中')
     return
   }
-  if (currentStatus === 'COMPLETED') {
-    ElMessage.info('该单词已完成学习')
+  if (currentStatus === WORD_PROGRESS.COMPLETED) {
+    ElMessage.info('该单词已完成')
     return
   }
 
@@ -280,7 +269,7 @@ const addToLearn = async (row) => {
     })
     row.progressStatus = normalizeProgressStatus({ progressStatus: statusRes?.data?.status, isLearning: true })
     dashboardStore.invalidateCache()
-    ElMessage.success('已加入学习计划')
+    ElMessage.success('已加入学习')
     await loadList()
   } catch (error) {
     ElMessage.error(error?.businessMessage || error?.message || '加入学习失败')
@@ -301,9 +290,9 @@ const retryPendingBatch = async () => {
     })
     const queued = Number(res?.data?.queued || 0)
     if (queued > 0) {
-      ElMessage.success(`已提交 ${queued} 个单词的AI重试任务`)
+      ElMessage.success(`已加入 ${queued} 个重试任务`)
     } else {
-      ElMessage.info('当前没有可重试的 pending 单词')
+      ElMessage.info('当前没有待重试单词')
     }
   } catch (error) {
     ElMessage.error(error?.businessMessage || error?.message || '批量重试失败')
@@ -406,25 +395,11 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
-.learning-tag {
-  color: var(--color-warning);
-  font-weight: 600;
-}
-
-.completed-tag {
-  color: var(--color-success);
-  font-weight: 700;
-}
-
-.add-btn {
-  border: 1px solid var(--color-accent);
-  color: var(--color-accent);
-  background: var(--color-surface);
-}
-
-.add-btn:hover {
-  border-color: var(--color-warning);
-  color: var(--color-warning);
+.operation-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .retry-pending-btn {
@@ -449,4 +424,5 @@ onUnmounted(() => {
   }
 }
 </style>
+
 

@@ -25,14 +25,14 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-button
+          <BtnPrimary
             class="login-btn"
             :loading="loading"
             type="primary"
             @click="handleLogin"
           >
             登录
-          </el-button>
+          </BtnPrimary>
         </el-form-item>
       </el-form>
 
@@ -50,6 +50,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -133,12 +134,7 @@ const handleLogin = async () => {
   width: 100%;
   height: 44px;
   border-radius: 10px;
-  border: none;
-  background: var(--color-primary-strong);
-}
-
-.login-btn:hover {
-  filter: brightness(0.95);
+  font-weight: 700;
 }
 
 .footer-link {

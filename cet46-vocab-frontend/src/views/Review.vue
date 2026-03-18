@@ -19,6 +19,8 @@
       <FlipCard
         :word="reviewStore.currentWord"
         :is-flipped="reviewStore.isFlipped"
+        :current-index="reviewStore.currentIndex"
+        :total="reviewStore.sessionStats.total"
         @flip="onFlip"
       />
 
@@ -35,9 +37,9 @@
       </div>
 
       <div v-if="isError" class="error-area">
-        <el-button class="retry-btn" type="primary" @click="onRetry">
+        <BtnPrimary class="retry-btn" @click="onRetry">
           重试提交
-        </el-button>
+        </BtnPrimary>
       </div>
     </div>
 
@@ -57,7 +59,7 @@
           <strong>1分 {{ dist.one }} / 3分 {{ dist.three }} / 5分 {{ dist.five }}</strong>
         </div>
       </div>
-      <el-button class="restart-btn" @click="restartSession">再复习一轮</el-button>
+      <BtnSecondary class="restart-btn" @click="restartSession">再复习一轮</BtnSecondary>
     </div>
   </section>
 </template>
@@ -70,6 +72,8 @@ import { useReviewStore } from '@/stores/review'
 import ProgressBar from '@/components/review/ProgressBar.vue'
 import FlipCard from '@/components/review/FlipCard.vue'
 import ScoreButtons from '@/components/review/ScoreButtons.vue'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const reviewStore = useReviewStore()
 const cardStartAt = ref(0)
@@ -107,7 +111,7 @@ const setCardStart = () => {
 }
 
 const onFlip = () => {
-  reviewStore.flipCard()
+  reviewStore.toggleCard()
 }
 
 const onScore = async (score) => {

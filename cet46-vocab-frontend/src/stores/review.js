@@ -47,6 +47,18 @@ export const useReviewStore = defineStore('review', {
       this.sessionState = 'card_back'
     },
 
+    toggleCard() {
+      if (this.sessionState === 'card_front') {
+        this.isFlipped = true
+        this.sessionState = 'card_back'
+        return
+      }
+      if (this.sessionState === 'card_back') {
+        this.isFlipped = false
+        this.sessionState = 'card_front'
+      }
+    },
+
     async submitScore(score, timeSpentMs) {
       const word = this.currentWord
       if (!word) return false

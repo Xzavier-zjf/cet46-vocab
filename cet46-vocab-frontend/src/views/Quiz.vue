@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="quiz-page">
     <section v-if="state === 'setup'" class="setup-card">
       <h2>模拟测验设置</h2>
@@ -29,9 +29,9 @@
         </el-radio-group>
       </div>
 
-      <el-button class="start-btn" :loading="state === 'loading'" @click="startQuiz">
+      <BtnPrimary class="start-btn" :loading="state === 'loading'" @click="startQuiz">
         开始测验
-      </el-button>
+      </BtnPrimary>
 
       <div class="history-card">
         <div class="history-title">测验历史</div>
@@ -76,8 +76,8 @@
       <div class="word-row">
         <h3 class="word">{{ currentQuestion?.english || '-' }}</h3>
         <div class="speak-actions">
-          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'uk')">🔊 英音</button>
-          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'us')">🔊 美音</button>
+          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'uk')">英音</button>
+          <button class="quick-speak" @click="handleSpeak(currentQuestion?.english, 'us')">美音</button>
         </div>
       </div>
       <p class="phonetic">{{ currentQuestion?.phonetic || '' }}</p>
@@ -103,15 +103,15 @@
           :disabled="state !== 'question'"
           @keyup.enter="submitFill"
         />
-        <el-button class="fill-submit" :disabled="state !== 'question'" @click="submitFill">
+        <BtnPrimary class="fill-submit" :disabled="state !== 'question'" @click="submitFill">
           提交答案
-        </el-button>
+        </BtnPrimary>
       </div>
 
       <div v-if="state === 'answered'" class="analysis">
         <h4>解析</h4>
         <p>{{ currentExplanation }}</p>
-        <el-button class="next-btn" @click="nextQuestion">下一题</el-button>
+        <BtnPrimary class="next-btn" @click="nextQuestion">下一题</BtnPrimary>
       </div>
     </section>
 
@@ -136,8 +136,8 @@
       </el-collapse>
 
       <div class="result-actions">
-        <el-button class="again-btn" @click="resetToSetup">再来一次</el-button>
-        <el-button @click="goHome">返回首页</el-button>
+        <BtnPrimary class="again-btn" @click="resetToSetup">再来一次</BtnPrimary>
+        <BtnSecondary @click="goHome">返回首页</BtnSecondary>
       </div>
     </section>
 
@@ -188,6 +188,8 @@ import { generateQuiz, submitQuiz } from '@/api/quiz'
 import { useUserStore } from '@/stores/user'
 import { getToken } from '@/utils/token'
 import { speakWord } from '@/utils/speech'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
@@ -576,9 +578,7 @@ onMounted(() => {
 
 .start-btn {
   margin-top: 10px;
-  background: var(--color-primary-strong);
-  color: #fff;
-  border-color: var(--color-primary-strong);
+  font-weight: 700;
 }
 
 .history-card {
@@ -763,8 +763,7 @@ onMounted(() => {
 }
 
 .fill-submit {
-  border-color: var(--color-primary-strong);
-  color: var(--color-primary-strong);
+  font-weight: 700;
 }
 
 .analysis {
@@ -819,9 +818,7 @@ onMounted(() => {
 }
 
 .again-btn {
-  background: var(--color-primary-strong);
-  color: #fff;
-  border-color: var(--color-primary-strong);
+  font-weight: 700;
 }
 
 @media (max-width: 768px) {

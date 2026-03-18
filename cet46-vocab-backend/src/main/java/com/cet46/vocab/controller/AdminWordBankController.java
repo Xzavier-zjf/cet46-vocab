@@ -1,6 +1,7 @@
 package com.cet46.vocab.controller;
 
 import com.cet46.vocab.common.Result;
+import com.cet46.vocab.common.WordType;
 import com.cet46.vocab.common.ResultCode;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
@@ -45,7 +46,7 @@ public class AdminWordBankController {
                                                   @RequestParam("file") MultipartFile file) {
         String normalizedType = normalizeWordType(wordType);
         if (normalizedType == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "wordType must be cet4 or cet6");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
         if (file == null || file.isEmpty()) {
             return Result.fail(ResultCode.BAD_REQUEST.getCode(), "file is empty");
@@ -71,7 +72,7 @@ public class AdminWordBankController {
                                                  Authentication authentication) {
         String normalizedType = normalizeWordType(wordType);
         if (normalizedType == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "wordType must be cet4 or cet6");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
         if (file == null || file.isEmpty()) {
             return Result.fail(ResultCode.BAD_REQUEST.getCode(), "file is empty");
@@ -221,7 +222,7 @@ public class AdminWordBankController {
     public Result<Map<String, Object>> generateExplain(@RequestBody GenerateExplainRequest req) {
         String wordType = normalizeWordType(req.getWordType());
         if (wordType == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "wordType must be cet4 or cet6");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
         String style = normalizeStyle(req.getStyle());
         if (style == null) {
@@ -249,7 +250,7 @@ public class AdminWordBankController {
     public Result<Map<String, Object>> generateExplainMissing(@RequestBody GenerateExplainMissingRequest req) {
         String wordType = normalizeWordType(req.getWordType());
         if (wordType == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "wordType must be cet4 or cet6");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
         String style = normalizeStyle(req.getStyle());
         if (style == null) {
@@ -398,15 +399,12 @@ public class AdminWordBankController {
     }
 
     private String resolveTable(String wordType) {
-        return "cet4".equals(wordType) ? "cet4zx" : "cet6zx";
+        WordType type = WordType.from(wordType);
+        return type == null ? null : type.tableName();
     }
 
     private String normalizeWordType(String wordType) {
-        if (!StringUtils.hasText(wordType)) {
-            return null;
-        }
-        String value = wordType.trim().toLowerCase(Locale.ROOT);
-        return ("cet4".equals(value) || "cet6".equals(value)) ? value : null;
+        return WordType.normalize(wordType);
     }
 
     private String normalizeStyle(String style) {
@@ -519,4 +517,6 @@ public class AdminWordBankController {
         private Integer limit = 100;
     }
 }
+
+
 

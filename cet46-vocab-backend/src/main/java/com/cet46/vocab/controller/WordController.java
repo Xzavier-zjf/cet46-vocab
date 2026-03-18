@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cet46.vocab.common.PageResult;
 import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
+import com.cet46.vocab.common.WordType;
+import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.dto.request.AddWordRequest;
 import com.cet46.vocab.dto.request.WordListQuery;
 import com.cet46.vocab.dto.response.WordDetailResponse;
@@ -11,7 +13,6 @@ import com.cet46.vocab.dto.response.WordListItem;
 import com.cet46.vocab.dto.response.WordProgressStatusResponse;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.WordMeta;
-import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.mapper.UserMapper;
@@ -27,12 +28,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -60,18 +59,23 @@ public class WordController {
 
     @GetMapping("/list")
     public Result<PageResult<WordListItem>> getWordList(@RequestParam("type") String type,
-                                                        @RequestParam(value = "page", required = false, defaultValue = "1") Integer page,
-                                                        @RequestParam(value = "size", required = false, defaultValue = "10") Integer size,
-                                                        @RequestParam(value = "keyword", required = false) String keyword,
-                                                        @RequestParam(value = "pos", required = false) String pos,
-                                                        Authentication authentication) {
+                                                         @RequestParam(value = "page", required = false, defaultValue = "1") Integer page,
+                                                         @RequestParam(value = "size", required = false, defaultValue = "10") Integer size,
+                                                         @RequestParam(value = "keyword", required = false) String keyword,
+                                                         @RequestParam(value = "pos", required = false) String pos,
+                                                         Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
 
+        WordType wordType = WordType.from(type);
+        if (wordType == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
+        }
+
         WordListQuery query = new WordListQuery();
-        query.setType(type);
+        query.setType(wordType.code());
         query.setPage(page);
         query.setSize(size);
         query.setKeyword(keyword);
@@ -81,30 +85,38 @@ public class WordController {
 
     @GetMapping("/detail")
     public Result<WordDetailResponse> getWordDetail(@RequestParam("wordId") Long wordId,
-                                                    @RequestParam("wordType") String wordType,
-                                                    Authentication authentication) {
+                                                     @RequestParam("wordType") String wordType,
+                                                     Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
-        return Result.success(wordService.getWordDetail(wordId, wordType, userId));
+        WordType normalized = WordType.from(wordType);
+        if (normalized == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
+        }
+        return Result.success(wordService.getWordDetail(wordId, normalized.code(), userId));
     }
 
     @PostMapping("/llm/generate")
     public Result<Map<String, Object>> generate(@Valid @RequestBody AddWordRequest req,
-                                                Authentication authentication) {
+                                                 Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        WordType wordType = WordType.from(req.getWordType());
+        if (wordType == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
         String taskId = "llm_task_" + UUID.randomUUID();
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
         }
-        wordService.invalidateWordDetailCache(userId, req.getWordId(), req.getWordType());
-        llmAsyncService.regenerateWordContent(req.getWordId(), req.getWordType(), style, provider);
+        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
+        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider);
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", taskId);
         data.put("status", "pending");
@@ -115,18 +127,22 @@ public class WordController {
 
     @PostMapping("/llm/generate-explain")
     public Result<Map<String, Object>> generateExplain(@Valid @RequestBody AddWordRequest req,
-                                                       Authentication authentication) {
+                                                        Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
+        WordType wordType = WordType.from(req.getWordType());
+        if (wordType == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
+        }
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
         }
-        wordService.invalidateWordDetailCache(userId, req.getWordId(), req.getWordType());
-        llmAsyncService.regenerateWordExplainContent(req.getWordId(), req.getWordType(), style, provider);
+        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
+        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider);
         Map<String, Object> data = new HashMap<>();
         data.put("status", "pending");
         data.put("style", style);
@@ -136,27 +152,27 @@ public class WordController {
 
     @PostMapping("/llm/retry-pending")
     public Result<Map<String, Object>> retryPending(@RequestParam("wordType") String wordType,
-                                                    @RequestParam(value = "limit", required = false, defaultValue = "20") Integer limit,
-                                                    Authentication authentication) {
+                                                     @RequestParam(value = "limit", required = false, defaultValue = "20") Integer limit,
+                                                     Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
-        String normalizedWordType = normalizeWordType(wordType);
+        WordType normalizedWordType = WordType.from(wordType);
         if (normalizedWordType == null) {
-            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "wordType must be cet4 or cet6");
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
         }
 
         int batchLimit = limit == null ? 20 : Math.min(Math.max(limit, 1), 200);
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4E91\u7AEFAPI\u672A\u914D\u7F6E\u5B8C\u6210\uFF0C\u8BF7\u5148\u5728\u540E\u7AEF\u914D\u7F6E llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
         }
 
         LambdaQueryWrapper<WordMeta> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(WordMeta::getStyle, style)
-                .eq(WordMeta::getWordType, normalizedWordType)
+                .eq(WordMeta::getWordType, normalizedWordType.code())
                 .and(w -> w.eq(WordMeta::getGenStatus, "pending")
                         .or()
                         .eq(WordMeta::getAiExplainStatus, "pending")
@@ -174,14 +190,14 @@ public class WordController {
             }
         }
         for (Long pendingWordId : pendingWordIds) {
-            wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType);
-            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType, style, provider);
-            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType, style, provider);
+            wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());
+            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider);
+            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider);
         }
 
         Map<String, Object> data = new HashMap<>();
         data.put("queued", pendingWordIds.size());
-        data.put("wordType", normalizedWordType);
+        data.put("wordType", normalizedWordType.code());
         data.put("style", style);
         data.put("provider", provider);
         return Result.success(data);
@@ -189,24 +205,32 @@ public class WordController {
 
     @PostMapping("/learn/add")
     public Result<Void> addWordToLearn(@Valid @RequestBody AddWordRequest req,
-                                       Authentication authentication) {
+                                        Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
-        wordService.addWordToLearn(req.getWordId(), req.getWordType(), userId);
+        WordType wordType = WordType.from(req.getWordType());
+        if (wordType == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
+        }
+        wordService.addWordToLearn(req.getWordId(), wordType.code(), userId);
         return Result.success();
     }
 
     @GetMapping("/progress/status")
     public Result<WordProgressStatusResponse> getProgressStatus(@RequestParam("wordId") Long wordId,
-                                                                @RequestParam("wordType") String wordType,
-                                                                Authentication authentication) {
+                                                                 @RequestParam("wordType") String wordType,
+                                                                 Authentication authentication) {
         Long userId = getUserId(authentication);
         if (userId == null) {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
-        return Result.success(wordService.getProgressStatus(wordId, wordType, userId));
+        WordType normalized = WordType.from(wordType);
+        if (normalized == null) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), WordType.supportedHint());
+        }
+        return Result.success(wordService.getProgressStatus(wordId, normalized.code(), userId));
     }
 
     private Long getUserId(Authentication authentication) {
@@ -234,17 +258,6 @@ public class WordController {
             return LlmProvider.LOCAL;
         }
         return LlmProvider.normalize(user.getLlmProvider());
-    }
-
-    private String normalizeWordType(String wordType) {
-        if (!StringUtils.hasText(wordType)) {
-            return null;
-        }
-        String value = wordType.trim().toLowerCase(Locale.ROOT);
-        if ("cet4".equals(value) || "cet6".equals(value)) {
-            return value;
-        }
-        return null;
     }
 
     private boolean isCloudUnavailable(String provider) {

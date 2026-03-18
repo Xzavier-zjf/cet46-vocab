@@ -15,8 +15,8 @@
             inactive-text="手动提问"
             @change="persistAutoAskSetting"
           />
-          <el-button plain @click="openHistory">历史对话</el-button>
-          <el-button type="primary" plain @click="createNewSession(true)">新建对话</el-button>
+          <BtnSecondary @click="openHistory">历史对话</BtnSecondary>
+          <BtnPrimary @click="createNewSession(true)">新建对话</BtnPrimary>
         </div>
       </div>
       <div v-if="activeContext.word" class="context">
@@ -144,7 +144,7 @@
             </el-select>
           </div>
           <div class="actions-right">
-            <el-button :disabled="loading" @click="clearCurrentSession">清空当前对话</el-button>
+            <BtnSecondary :disabled="loading" @click="clearCurrentSession">清空当前对话</BtnSecondary>
             <el-button
               v-if="loading"
               type="warning"
@@ -153,14 +153,13 @@
             >
               暂停
             </el-button>
-            <el-button
+            <BtnPrimary
               v-else
-              type="primary"
               :disabled="!question.trim()"
               @click="send()"
             >
               发送
-            </el-button>
+            </BtnPrimary>
           </div>
         </div>
       </div>
@@ -191,13 +190,13 @@
             :value="group.id"
           />
         </el-select>
-        <el-button size="small" @click="openCreateGroupDialog">新建分组</el-button>
+        <BtnSecondary size="small" @click="openCreateGroupDialog">新建分组</BtnSecondary>
       </div>
 
       <div class="history-tools">
-        <el-button size="small" @click="toggleSelectAll">
+        <BtnSecondary size="small" @click="toggleSelectAll">
           {{ allSelected ? '取消全选' : '全选' }}
-        </el-button>
+        </BtnSecondary>
         <el-button size="small" type="danger" plain :disabled="selectedIds.length === 0" @click="deleteSelected">
           批量删除
         </el-button>
@@ -257,8 +256,8 @@
     <el-dialog v-model="renameDialogVisible" title="重命名会话" width="420px">
       <el-input v-model="renameValue" maxlength="40" show-word-limit placeholder="请输入新的会话名称" />
       <template #footer>
-        <el-button @click="renameDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmRename">确定</el-button>
+        <BtnSecondary @click="renameDialogVisible = false">取消</BtnSecondary>
+        <BtnPrimary @click="confirmRename">确定</BtnPrimary>
       </template>
     </el-dialog>
 
@@ -275,9 +274,9 @@
         <el-input v-model="newGroupName" maxlength="20" placeholder="或输入新分组名称" />
       </div>
       <template #footer>
-        <el-button @click="groupDialogVisible = false">取消</el-button>
-        <el-button @click="createGroupInDialog">新建分组</el-button>
-        <el-button type="primary" @click="confirmGroupAssign">确定</el-button>
+        <BtnSecondary @click="groupDialogVisible = false">取消</BtnSecondary>
+        <BtnSecondary @click="createGroupInDialog">新建分组</BtnSecondary>
+        <BtnPrimary @click="confirmGroupAssign">确定</BtnPrimary>
       </template>
     </el-dialog>
   </section>
@@ -289,6 +288,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { assistantChat } from '@/api/assistant'
 import request from '@/api/request'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
 const route = useRoute()
 const router = useRouter()

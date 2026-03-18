@@ -1,9 +1,9 @@
-﻿<template>
+<template>
   <section class="admin-page">
     <section class="admin-hero">
       <div>
-        <h1>词库运营仪表盘</h1>
-        <p>统一管理导入、回滚与 AI 解释生成任务。</p>
+        <h1>词库管理</h1>
+        <p>管理词库导入、回滚与 AI 释义生成。</p>
       </div>
       <div class="hero-metrics">
         <article class="metric-item">
@@ -15,7 +15,7 @@
           <strong>{{ rolledBackCount }}</strong>
         </article>
         <article class="metric-item">
-          <span>最近批次</span>
+          <span>最新批次</span>
           <strong>{{ latestBatchId }}</strong>
         </article>
       </div>
@@ -23,49 +23,52 @@
 
     <el-card class="panel-card" shadow="never">
       <template #header>
-        <div class="panel-title">导入文件</div>
+        <div class="panel-title">导入词库 CSV</div>
       </template>
-      <div class="row">
+      <div class="row import-toolbar">
         <el-select v-model="wordType" class="field">
-          <el-option label="CET4" value="cet4" />
-          <el-option label="CET6" value="cet6" />
+          <el-option v-for="item in WORD_TYPE_OPTIONS_ZH" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-upload :auto-upload="false" :show-file-list="true" :on-change="handleFileChange" :limit="1" accept=".csv,text/csv">
-          <el-button>选择 CSV 文件</el-button>
+          <BtnSecondary>选择 CSV</BtnSecondary>
         </el-upload>
-        <el-button :loading="previewLoading" @click="submitPreview">导入预览</el-button>
-        <el-button type="primary" :loading="importLoading" @click="submitImport">确认导入</el-button>
+        <BtnSecondary :loading="previewLoading" @click="submitPreview">预览</BtnSecondary>
+        <BtnPrimary :loading="importLoading" @click="submitImport">导入</BtnPrimary>
       </div>
-      <p class="hint">建议先预览后导入。支持列：`id,english,sent,chinese` 或 `english,sent,chinese`。</p>
+      <p class="hint">支持字段：`id,english,sent,chinese` 或 `english,sent,chinese`。</p>
       <div v-if="previewResult" class="result">
-        <p>预览结果：新增 {{ previewResult.inserted }}，更新 {{ previewResult.updated }}，跳过 {{ previewResult.skipped }}</p>
+        <p>预览：新增 {{ previewResult.inserted }}，更新 {{ previewResult.updated }}，跳过 {{ previewResult.skipped }}</p>
         <el-table v-if="Array.isArray(previewResult.samples) && previewResult.samples.length" :data="previewResult.samples" size="small">
           <el-table-column prop="id" label="ID" width="90" />
           <el-table-column prop="english" label="单词" min-width="150" />
           <el-table-column prop="action" label="动作" width="110" />
-          <el-table-column prop="chinese" label="中文释义" min-width="240" />
+          <el-table-column prop="chinese" label="中文" min-width="240" />
         </el-table>
-        <p v-if="(previewResult.errors || []).length" class="error">错误：{{ previewResult.errors.slice(0, 5).join('；') }}</p>
+        <p v-if="(previewResult.errors || []).length" class="error">错误：{{ previewResult.errors.slice(0, 5).join(' ; ') }}</p>
       </div>
       <div v-if="importResult" class="result">
-        <p>导入完成：批次 {{ importResult.batchId }}，新增 {{ importResult.inserted }}，更新 {{ importResult.updated }}，跳过 {{ importResult.skipped }}</p>
+        <p>导入完成：批次 {{ importResult.batchId }}, 新增 {{ importResult.inserted }}，更新 {{ importResult.updated }}，跳过 {{ importResult.skipped }}</p>
       </div>
     </el-card>
 
     <el-card class="panel-card" shadow="never">
       <template #header>
-        <div class="panel-title">导入批次回滚</div>
+        <div class="panel-title">批次回滚</div>
       </template>
       <div class="row">
-        <el-button :loading="batchLoading" @click="loadBatches">刷新批次</el-button>
+        <BtnSecondary :loading="batchLoading" @click="loadBatches">刷新</BtnSecondary>
       </div>
       <el-table :data="batches" size="small">
         <el-table-column prop="batch_id" label="批次 ID" min-width="220" />
-        <el-table-column prop="word_type" label="词库" width="90" />
-        <el-table-column prop="inserted_count" label="新增" width="80" />
-        <el-table-column prop="updated_count" label="更新" width="80" />
-        <el-table-column prop="status" label="状态" width="140" />
-        <el-table-column label="操作" width="140">
+        <el-table-column prop="word_type" label="词库类型" width="120" />
+        <el-table-column prop="inserted_count" label="新增" width="90" />
+        <el-table-column prop="updated_count" label="更新" width="90" />
+        <el-table-column label="状态" width="140">
+          <template #default="{ row }">
+            <span class="status-tag" :class="statusClass(row.status)">{{ statusLabel(row.status) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="动作" width="140">
           <template #default="{ row }">
             <el-button
               size="small"
@@ -83,21 +86,21 @@
 
     <el-card class="panel-card" shadow="never">
       <template #header>
-        <div class="panel-title">智能解释生成</div>
+        <div class="panel-title">AI 释义生成</div>
       </template>
-      <div class="row">
+      <div class="row ai-toolbar">
         <el-select v-model="style" class="field">
-          <el-option label="故事风格" value="story" />
-          <el-option label="学术风格" value="academic" />
-          <el-option label="吐槽风格" value="sarcastic" />
+          <el-option label="故事" value="story" />
+          <el-option label="学术" value="academic" />
+          <el-option label="讽刺" value="sarcastic" />
         </el-select>
         <el-select v-model="provider" class="field">
-          <el-option label="本地模型" value="local" />
-          <el-option label="云端 API" value="cloud" />
+          <el-option label="本地" value="local" />
+          <el-option label="云端" value="cloud" />
         </el-select>
         <el-input-number v-model="limit" :min="1" :max="500" />
-        <el-button type="primary" :loading="explainLoading" @click="generateExplainAll">批量生成解释</el-button>
-        <el-button :loading="missingLoading" @click="generateExplainMissing">仅补齐缺失解释</el-button>
+        <BtnPrimary :loading="explainLoading" @click="generateExplainAll">全部生成</BtnPrimary>
+        <BtnSecondary :loading="missingLoading" @click="generateExplainMissing">补全缺失</BtnSecondary>
       </div>
     </el-card>
   </section>
@@ -107,8 +110,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '@/api/request'
+import { WORD_TYPE_OPTIONS_ZH, WORD_TYPES } from '@/constants/wordTypes'
+import BtnPrimary from '@/components/common/BtnPrimary.vue'
+import BtnSecondary from '@/components/common/BtnSecondary.vue'
 
-const wordType = ref('cet4')
+const wordType = ref(WORD_TYPES.CET4)
 const style = ref('story')
 const provider = ref('local')
 const limit = ref(100)
@@ -133,6 +139,18 @@ const latestBatchId = computed(() => {
   if (!first) return '-'
   return String(first).slice(0, 8)
 })
+
+const statusLabel = (status) => {
+  if (status === 'ROLLED_BACK') return '已回滚'
+  if (status === 'SUCCESS') return '成功'
+  return status || '-'
+}
+
+const statusClass = (status) => {
+  if (status === 'ROLLED_BACK') return 'rolled-back'
+  if (status === 'SUCCESS') return 'success'
+  return 'default'
+}
 
 const handleFileChange = (file) => {
   selectedFile.value = file?.raw || null
@@ -193,12 +211,12 @@ const loadBatches = async () => {
 }
 
 const rollbackBatch = async (batchId) => {
-  await ElMessageBox.confirm(`确认回滚批次 ${batchId} 吗？`, '回滚确认', { type: 'warning' })
+  await ElMessageBox.confirm(`确认回滚批次 ${batchId}？`, '提示', { type: 'warning' })
   rollbackLoading.value = true
   rollbackBatchId.value = batchId
   try {
     const res = await request.post('/admin/word-bank/rollback', { batchId })
-    ElMessage.success(`回滚完成，${res?.data?.rolledBack || 0} 条`)
+    ElMessage.success(`已回滚 ${res?.data?.rolledBack || 0} 条`)
     await loadBatches()
   } finally {
     rollbackLoading.value = false
@@ -215,7 +233,7 @@ const generateExplainAll = async () => {
       provider: provider.value,
       limit: limit.value
     })
-    ElMessage.success(`已提交 ${res?.data?.queued || 0} 个解释生成任务`)
+    ElMessage.success(`已加入队列 ${res?.data?.queued || 0} 条`)
   } finally {
     explainLoading.value = false
   }
@@ -230,7 +248,7 @@ const generateExplainMissing = async () => {
       provider: provider.value,
       limit: limit.value
     })
-    ElMessage.success(`已提交 ${res?.data?.queued || 0} 个缺失解释补齐任务`)
+    ElMessage.success(`已加入队列 ${res?.data?.queued || 0} 条`)
   } finally {
     missingLoading.value = false
   }
@@ -306,7 +324,7 @@ onMounted(async () => {
 
 .panel-title {
   font-weight: 700;
-  color: #1a2b4a;
+  color: var(--color-primary-strong);
 }
 
 .row {
@@ -316,27 +334,88 @@ onMounted(async () => {
   flex-wrap: wrap;
 }
 
+.import-toolbar {
+  align-items: stretch;
+}
+
+.import-toolbar :deep(.el-upload),
+.import-toolbar :deep(.el-upload .el-button),
+.import-toolbar > .el-button {
+  height: 36px;
+}
+
+.import-toolbar :deep(.el-upload) {
+  display: inline-flex;
+}
+
 .field {
-  width: 160px;
+  width: 180px;
 }
 
 .hint {
   margin: 10px 0 0;
-  color: #64748b;
+  color: var(--color-muted-strong);
 }
 
 .result {
   margin-top: 12px;
+  color: var(--color-text);
 }
 
 .error {
   margin-top: 8px;
-  color: #b91c1c;
+  color: var(--color-danger);
+}
+
+.ai-toolbar {
+  color: var(--color-text);
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  border: 1px solid var(--color-border-soft);
+  color: var(--color-muted-strong);
+  background: var(--color-surface-soft);
+}
+
+.status-tag.success {
+  border-color: color-mix(in srgb, var(--color-success) 55%, var(--color-border-soft));
+  color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.status-tag.rolled-back {
+  border-color: color-mix(in srgb, var(--color-danger) 55%, var(--color-border-soft));
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
+}
+
+.status-tag.default {
+  border-color: var(--color-border-soft);
+  color: var(--color-muted-strong);
+  background: var(--color-surface-soft);
 }
 
 @media (max-width: 900px) {
   .admin-hero {
     grid-template-columns: 1fr;
+  }
+
+  .import-toolbar {
+    align-items: center;
+  }
+
+  .import-toolbar :deep(.el-upload),
+  .import-toolbar :deep(.el-upload .el-button),
+  .import-toolbar > .el-button {
+    height: auto;
   }
 }
 </style>

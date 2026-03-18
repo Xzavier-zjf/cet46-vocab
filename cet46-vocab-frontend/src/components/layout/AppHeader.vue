@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <header class="app-header">
     <div class="header-right">
       <button
@@ -39,7 +39,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const themeStore = useThemeStore()
 
-const displayName = computed(() => userStore.nickname || '同学')
+const displayName = computed(() => userStore.nickname || userStore.username || '同学')
 const avatarText = computed(() => (displayName.value || '同').slice(0, 1))
 const isDark = computed(() => themeStore.isDark)
 const toggleTheme = () => themeStore.toggleTheme()

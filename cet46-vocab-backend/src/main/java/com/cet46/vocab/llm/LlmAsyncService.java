@@ -1,5 +1,6 @@
 package com.cet46.vocab.llm;
 
+import com.cet46.vocab.common.WordType;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.mapper.WordMetaMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -8,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -260,7 +262,7 @@ public class LlmAsyncService {
         String english = wordBase == null ? "" : defaultString(wordBase.english);
         WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
         if (wordMeta == null) {
-            wordMeta = WordMeta.builder()
+            WordMeta created = WordMeta.builder()
                     .wordId(wordId)
                     .wordType(wordType)
                     .word(english)
@@ -268,15 +270,24 @@ public class LlmAsyncService {
                     .genStatus("pending")
                     .promptHash(promptHash)
                     .build();
-            wordMetaMapper.insert(wordMeta);
-        } else {
-            if (!StringUtils.hasText(wordMeta.getWord())) {
-                wordMeta.setWord(english);
+            try {
+                wordMetaMapper.insert(created);
+                return created;
+            } catch (DuplicateKeyException duplicateKeyException) {
+                // Another async task inserted the same (word_id, word_type, style) row first.
+                wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+                if (wordMeta == null) {
+                    throw duplicateKeyException;
+                }
             }
-            wordMeta.setGenStatus("pending");
-            wordMeta.setPromptHash(promptHash);
-            wordMetaMapper.updateById(wordMeta);
         }
+
+        if (!StringUtils.hasText(wordMeta.getWord())) {
+            wordMeta.setWord(english);
+        }
+        wordMeta.setGenStatus("pending");
+        wordMeta.setPromptHash(promptHash);
+        wordMetaMapper.updateById(wordMeta);
         return wordMeta;
     }
 
@@ -338,16 +349,12 @@ public class LlmAsyncService {
     }
 
     private WordBase loadWordBase(Long wordId, String wordType) {
-        String tableName;
-        if ("cet4".equalsIgnoreCase(wordType)) {
-            tableName = "cet4zx";
-        } else if ("cet6".equalsIgnoreCase(wordType)) {
-            tableName = "cet6zx";
-        } else {
+        WordType type = WordType.from(wordType);
+        if (type == null) {
             return null;
         }
 
-        String sql = "SELECT english, sent, chinese FROM " + tableName + " WHERE id = ? LIMIT 1";
+        String sql = "SELECT english, sent, chinese FROM " + type.tableName() + " WHERE id = ? LIMIT 1";
         List<WordBase> rows = jdbcTemplate.query(
                 sql,
                 (rs, rowNum) -> new WordBase(
@@ -359,7 +366,6 @@ public class LlmAsyncService {
         );
         return rows.isEmpty() ? null : rows.get(0);
     }
-
     private String safeGenerate(String prompt, String provider) {
         if (!StringUtils.hasText(prompt)) {
             return null;
@@ -569,15 +575,15 @@ public class LlmAsyncService {
     }
 
     private String resolveLevel(String wordType) {
-        if ("cet6".equalsIgnoreCase(wordType)) {
-            return "六级";
+        WordType type = WordType.from(wordType);
+        if (type == null) {
+            return "";
         }
-        if ("cet4".equalsIgnoreCase(wordType)) {
-            return "四级";
+        if (type == WordType.CET6 || type == WordType.CET6_LX) {
+            return "CET6";
         }
-        return "";
+        return "CET4";
     }
-
     private String normalizeExplainDisplay(String rawExplain, String pos) {
         JsonNode node = parseJsonNode(rawExplain);
         if (node == null) {
@@ -585,17 +591,18 @@ public class LlmAsyncService {
             if (!StringUtils.hasText(plain)) {
                 return null;
             }
-            if (plain.contains("语法用法：")) {
+            if (plain.contains("Grammar usage:")) {
                 return plain;
             }
             String fallbackGrammar = fallbackGrammarUsage(pos);
             if (!StringUtils.hasText(fallbackGrammar)) {
                 return plain;
             }
-            return plain + "\n语法用法：" + fallbackGrammar;
+            return plain + "\nGrammar usage:" + fallbackGrammar;
         }
+
         StringBuilder sb = new StringBuilder();
-        appendIfPresent(sb, getText(node, "word"), "词条：");
+        appendIfPresent(sb, getText(node, "word"), "Word: ");
 
         JsonNode meanings = node.get("core_meanings");
         if (meanings != null && meanings.isArray() && !meanings.isEmpty()) {
@@ -608,7 +615,7 @@ public class LlmAsyncService {
                 String sense = getText(meaning, "sense");
                 String cn = getText(meaning, "cn_explanation");
                 String line = StringUtils.hasText(sense) && StringUtils.hasText(cn)
-                        ? sense + "：" + cn
+                        ? sense + ": " + cn
                         : (StringUtils.hasText(cn) ? cn : sense);
                 if (StringUtils.hasText(line)) {
                     lines.add(line);
@@ -616,20 +623,21 @@ public class LlmAsyncService {
                 }
             }
             if (!lines.isEmpty()) {
-                appendIfPresent(sb, String.join("；", lines), "核心义项：");
+                appendIfPresent(sb, String.join("; ", lines), "Core meanings: ");
             }
         }
 
         JsonNode examUsage = node.get("exam_usage");
         if (examUsage != null && examUsage.isObject()) {
-            appendIfPresent(sb, getText(examUsage, "note"), "考试用法：");
+            appendIfPresent(sb, getText(examUsage, "note"), "Exam usage: ");
         }
-        appendIfPresent(sb, getText(node, "memory_tip"), "记忆提示：");
+        appendIfPresent(sb, getText(node, "memory_tip"), "Memory tip: ");
+
         String grammarUsage = buildGrammarUsage(node.get("grammar_usage"));
         if (!StringUtils.hasText(grammarUsage)) {
             grammarUsage = fallbackGrammarUsage(pos);
         }
-        appendIfPresent(sb, grammarUsage, "语法用法：");
+        appendIfPresent(sb, grammarUsage, "Grammar usage:");
 
         JsonNode confusables = node.get("confusables");
         if (confusables != null && confusables.isArray() && !confusables.isEmpty()) {
@@ -638,10 +646,15 @@ public class LlmAsyncService {
                 String word = getText(first, "word");
                 String difference = getText(first, "difference");
                 if (StringUtils.hasText(word) || StringUtils.hasText(difference)) {
-                    appendIfPresent(sb, defaultString(word) + (StringUtils.hasText(difference) ? "：" + difference : ""), "易混词：");
+                    appendIfPresent(
+                            sb,
+                            defaultString(word) + (StringUtils.hasText(difference) ? ": " + difference : ""),
+                            "Confusable: "
+                    );
                 }
             }
         }
+
         String normalized = sb.toString().trim();
         if (StringUtils.hasText(normalized)) {
             return normalized;
@@ -716,11 +729,11 @@ public class LlmAsyncService {
         }
         String verbPatterns = joinArray(grammarNode.get("verb_patterns"), 2);
         if (StringUtils.hasText(verbPatterns)) {
-            parts.add("动词搭配: " + verbPatterns);
+            parts.add("Verb patterns: " + verbPatterns);
         }
         String structures = joinArray(grammarNode.get("common_structures"), 2);
         if (StringUtils.hasText(structures)) {
-            parts.add("常见结构: " + structures);
+            parts.add("Common structures: " + structures);
         }
         String usageTip = getText(grammarNode, "usage_tip");
         if (StringUtils.hasText(usageTip)) {
@@ -729,7 +742,7 @@ public class LlmAsyncService {
         if (parts.isEmpty()) {
             return null;
         }
-        return String.join("；", parts);
+        return String.join("; ", parts);
     }
 
     private String fallbackGrammarUsage(String pos) {
@@ -738,18 +751,18 @@ public class LlmAsyncService {
         }
         String normalized = pos.toLowerCase();
         if (normalized.contains("n")) {
-            return "注意可数/不可数与单复数变化，搭配冠词和数量词时优先确认名词属性。";
+            return "Pay attention to countability, singular/plural, and article usage.";
         }
         if (normalized.contains("v")) {
-            return "重点关注时态变化、及物/不及物和常见搭配结构（如动词+宾语/动词+to do）。";
+            return "Pay attention to tense changes and common verb patterns (to do / doing / transitive).";
         }
         if (normalized.contains("adj")) {
-            return "常见作定语或表语，注意与介词搭配及比较级/最高级变化。";
+            return "Used mainly as modifier/predicative; pay attention to comparative forms and collocations.";
         }
         if (normalized.contains("adv")) {
-            return "常修饰动词或形容词，注意在句中的位置及与程度副词连用。";
+            return "Usually modifies verbs/adjectives; pay attention to position in sentence.";
         }
-        return "结合词性关注句中成分位置与常见固定搭配。";
+        return "Pay attention to sentence role and fixed collocations.";
     }
 
     private String joinArray(JsonNode node, int limit) {
@@ -787,6 +800,7 @@ public class LlmAsyncService {
             }
             return wordMeta;
         }
+
         WordMeta created = WordMeta.builder()
                 .wordId(wordId)
                 .wordType(wordType)
@@ -796,10 +810,21 @@ public class LlmAsyncService {
                 .promptHash(CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style))
                 .aiExplainStatus("pending")
                 .build();
-        wordMetaMapper.insert(created);
-        return created;
+        try {
+            wordMetaMapper.insert(created);
+            return created;
+        } catch (DuplicateKeyException duplicateKeyException) {
+            WordMeta concurrent = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+            if (concurrent != null) {
+                if (!StringUtils.hasText(concurrent.getWord())) {
+                    concurrent.setWord(defaultString(english));
+                    wordMetaMapper.updateById(concurrent);
+                }
+                return concurrent;
+            }
+            throw duplicateKeyException;
+        }
     }
-
     private CompletableFuture<GenerationAttempt> generateAsync(String existingContent,
                                                                 String promptType,
                                                                 PromptType promptEnum,

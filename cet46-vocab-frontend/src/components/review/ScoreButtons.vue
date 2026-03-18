@@ -45,7 +45,7 @@ defineEmits(['score'])
   height: 44px;
   border: 1px solid transparent;
   border-radius: 8px;
-  color: #ffffff;
+  color: var(--score-btn-text);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -57,20 +57,36 @@ defineEmits(['score'])
   filter: brightness(0.96);
 }
 
+.score-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .btn-1 {
-  background: var(--color-primary);
-  border-color: rgba(255, 255, 255, 0.18);
+  --score-btn-bg: #8d5c56;
+  --score-btn-text: #fdf8f7;
+  --score-btn-border: #7d4f49;
+  background: var(--score-btn-bg);
+  color: var(--score-btn-text);
+  border-color: var(--score-btn-border);
 }
 
 .btn-3 {
-  background: var(--color-warning);
-  border-color: rgba(255, 255, 255, 0.18);
+  --score-btn-bg: #a8863e;
+  --score-btn-text: #fffaf0;
+  --score-btn-border: #8f7337;
+  background: var(--score-btn-bg);
+  color: var(--score-btn-text);
+  border-color: var(--score-btn-border);
 }
 
 .btn-5 {
-  background: var(--color-accent);
-  color: #1a2b4a;
-  border-color: rgba(26, 43, 74, 0.24);
+  --score-btn-bg: #3f6371;
+  --score-btn-text: #f3f8fa;
+  --score-btn-border: #345461;
+  background: var(--score-btn-bg);
+  color: var(--score-btn-text);
+  border-color: var(--score-btn-border);
 }
 
 .score-btn:disabled {
@@ -79,6 +95,45 @@ defineEmits(['score'])
   border-color: var(--color-border);
   cursor: not-allowed;
   transform: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(:root.dark) .btn-1 {
+    --score-btn-bg: #7a4e49;
+    --score-btn-text: #f7e6e4;
+    --score-btn-border: #9a6862;
+  }
+
+  :global(:root.dark) .btn-3 {
+    --score-btn-bg: #8f7538;
+    --score-btn-text: #fff3d8;
+    --score-btn-border: #ad9152;
+  }
+
+  :global(:root.dark) .btn-5 {
+    --score-btn-bg: #4c7382;
+    --score-btn-text: #e9f6fb;
+    --score-btn-border: #6a93a3;
+  }
+}
+
+/* Ensure manual theme toggle to dark mode is reflected immediately. */
+:global(:root.dark) .btn-1 {
+  --score-btn-bg: #7a4e49;
+  --score-btn-text: #f7e6e4;
+  --score-btn-border: #9a6862;
+}
+
+:global(:root.dark) .btn-3 {
+  --score-btn-bg: #8f7538;
+  --score-btn-text: #fff3d8;
+  --score-btn-border: #ad9152;
+}
+
+:global(:root.dark) .btn-5 {
+  --score-btn-bg: #4c7382;
+  --score-btn-text: #e9f6fb;
+  --score-btn-border: #6a93a3;
 }
 
 @media (max-width: 768px) {

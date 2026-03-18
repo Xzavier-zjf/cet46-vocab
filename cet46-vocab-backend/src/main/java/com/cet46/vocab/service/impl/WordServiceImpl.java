@@ -3,6 +3,7 @@ package com.cet46.vocab.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cet46.vocab.common.PageResult;
+import com.cet46.vocab.common.WordType;
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.dto.request.WordListQuery;
 import com.cet46.vocab.dto.response.WordDetailResponse;
@@ -91,7 +92,14 @@ public class WordServiceImpl implements WordService {
         int pageSize = query.getSize() == null ? 20 : Math.min(Math.max(query.getSize(), 1), 100);
         String style = getUserStyle(userId);
 
-        if ("cet4".equalsIgnoreCase(query.getType())) {
+        WordType wordType = WordType.from(query.getType());
+        if (wordType == null) {
+            Page<WordListItem> emptyPage = new Page<>(pageNo, pageSize, 0);
+            emptyPage.setRecords(Collections.emptyList());
+            return PageResult.of(emptyPage);
+        }
+
+        if (wordType == WordType.CET4) {
             Page<Cet4Word> page = new Page<>(pageNo, pageSize);
             LambdaQueryWrapper<Cet4Word> wrapper = new LambdaQueryWrapper<>();
             if (StringUtils.hasText(query.getKeyword())) {
@@ -104,7 +112,7 @@ public class WordServiceImpl implements WordService {
             return PageResult.of(out);
         }
 
-        if ("cet6".equalsIgnoreCase(query.getType())) {
+        if (wordType == WordType.CET6) {
             Page<Cet6Word> page = new Page<>(pageNo, pageSize);
             LambdaQueryWrapper<Cet6Word> wrapper = new LambdaQueryWrapper<>();
             if (StringUtils.hasText(query.getKeyword())) {
@@ -117,11 +125,8 @@ public class WordServiceImpl implements WordService {
             return PageResult.of(out);
         }
 
-        Page<WordListItem> emptyPage = new Page<>(pageNo, pageSize, 0);
-        emptyPage.setRecords(Collections.emptyList());
-        return PageResult.of(emptyPage);
+        return getWordListFromTable(query, userId, style, wordType);
     }
-
     @Override
     public WordDetailResponse getWordDetail(Long wordId, String wordType, Long userId) {
         String style = getUserStyle(userId);
@@ -258,7 +263,10 @@ public class WordServiceImpl implements WordService {
 
     @Override
     public WordProgressStatusResponse getProgressStatus(Long wordId, String wordType, Long userId) {
-        String normalizedType = wordType == null ? "" : wordType.toLowerCase();
+        String normalizedType = WordType.normalize(wordType);
+        if (!StringUtils.hasText(normalizedType)) {
+            normalizedType = wordType == null ? "" : wordType.toLowerCase();
+        }
         boolean learning = hasLearningProgress(userId, wordId, normalizedType);
         boolean completed = hasCompletedReview(userId, wordId, normalizedType);
         String status = resolveProgressStatus(learning, completed);
@@ -269,6 +277,86 @@ public class WordServiceImpl implements WordService {
                 .isLearning(STATUS_LEARNING.equals(status))
                 .isCompleted(STATUS_COMPLETED.equals(status))
                 .build();
+    }
+
+    private PageResult<WordListItem> getWordListFromTable(WordListQuery query, Long userId, String style, WordType wordType) {
+        int pageNo = query.getPage() == null || query.getPage() < 1 ? 1 : query.getPage();
+        int pageSize = query.getSize() == null ? 20 : Math.min(Math.max(query.getSize(), 1), 100);
+
+        String keyword = StringUtils.hasText(query.getKeyword()) ? query.getKeyword().trim() : null;
+        String where = StringUtils.hasText(keyword) ? " WHERE english LIKE ?" : "";
+        Object[] countArgs = StringUtils.hasText(keyword) ? new Object[] {"%" + keyword + "%"} : new Object[] {};
+        Long total = jdbcTemplate.queryForObject("SELECT COUNT(1) FROM " + wordType.tableName() + where, Long.class, countArgs);
+
+        int offset = (pageNo - 1) * pageSize;
+        List<Map<String, Object>> rows;
+        if (StringUtils.hasText(keyword)) {
+            rows = jdbcTemplate.queryForList(
+                    "SELECT id, english, sent, chinese FROM " + wordType.tableName() + where + " ORDER BY id ASC LIMIT ? OFFSET ?",
+                    "%" + keyword + "%", pageSize, offset
+            );
+        } else {
+            rows = jdbcTemplate.queryForList(
+                    "SELECT id, english, sent, chinese FROM " + wordType.tableName() + " ORDER BY id ASC LIMIT ? OFFSET ?",
+                    pageSize, offset
+            );
+        }
+
+        List<WordListItem> items = toWordListItemsFromRows(rows, wordType.code(), style, query.getPos(), userId);
+        Page<WordListItem> out = new Page<>(pageNo, pageSize, total == null ? 0 : total);
+        out.setRecords(items);
+        return PageResult.of(out);
+    }
+
+    private List<WordListItem> toWordListItemsFromRows(List<Map<String, Object>> rows,
+                                                        String wordType,
+                                                        String style,
+                                                        String posFilter,
+                                                        Long userId) {
+        if (rows == null || rows.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<Long> wordIds = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            Object rawId = row.get("id");
+            if (rawId instanceof Number) {
+                wordIds.add(((Number) rawId).longValue());
+            }
+        }
+
+        Map<Long, String> posMap = loadPosMap(wordIds, wordType, style);
+        Set<Long> learningIds = loadLearningWordIdSet(userId, wordIds, wordType);
+        Set<Long> completedIds = loadCompletedWordIdSet(userId, wordIds, wordType);
+
+        List<WordListItem> items = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            Object rawId = row.get("id");
+            if (!(rawId instanceof Number)) {
+                continue;
+            }
+            Long wordId = ((Number) rawId).longValue();
+            String chinese = row.get("chinese") == null ? "" : String.valueOf(row.get("chinese"));
+            String pos = StringUtils.hasText(posMap.get(wordId)) ? posMap.get(wordId) : PosParser.parse(chinese);
+            if (StringUtils.hasText(posFilter) && !"other".equalsIgnoreCase(posFilter)) {
+                if (!StringUtils.hasText(pos) || !containsPos(pos, posFilter)) {
+                    continue;
+                }
+            }
+
+            String progressStatus = resolveProgressStatus(learningIds.contains(wordId), completedIds.contains(wordId));
+            items.add(WordListItem.builder()
+                    .wordId(wordId)
+                    .wordType(wordType)
+                    .english(row.get("english") == null ? "" : String.valueOf(row.get("english")))
+                    .phonetic(row.get("sent") == null ? "" : String.valueOf(row.get("sent")))
+                    .chinese(chinese)
+                    .pos(pos)
+                    .isLearning(STATUS_LEARNING.equals(progressStatus))
+                    .progressStatus(progressStatus)
+                    .build());
+        }
+        return items;
     }
 
     private List<WordListItem> toWordListItemsFromCet4(List<Cet4Word> records, String style, String posFilter, Long userId) {
@@ -515,7 +603,8 @@ public class WordServiceImpl implements WordService {
                 .grammarUsage(resolveGrammarUsage(wordMeta.getAiExplain(), pos))
                 .explainStatus(resolveExplainStatus(wordMeta))
                 .build();
-    }    private String resolveGrammarUsage(String explain, String pos) {
+    }
+    private String resolveGrammarUsage(String explain, String pos) {
         if (!StringUtils.hasText(explain)) {
             return fallbackGrammarUsage(pos);
         }
@@ -651,23 +740,39 @@ public class WordServiceImpl implements WordService {
     }
 
     private WordBase loadWordBase(Long wordId, String wordType) {
-        if ("cet4".equalsIgnoreCase(wordType)) {
+        WordType type = WordType.from(wordType);
+        if (type == null) {
+            return null;
+        }
+        if (type == WordType.CET4) {
             Cet4Word word = cet4WordMapper.selectById(wordId);
             if (word == null) {
                 return null;
             }
             return new WordBase(word.getEnglish(), word.getSent(), word.getChinese());
         }
-        if ("cet6".equalsIgnoreCase(wordType)) {
+        if (type == WordType.CET6) {
             Cet6Word word = cet6WordMapper.selectById(wordId);
             if (word == null) {
                 return null;
             }
             return new WordBase(word.getEnglish(), word.getSent(), word.getChinese());
         }
-        return null;
-    }
 
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT english, sent, chinese FROM " + type.tableName() + " WHERE id = ? LIMIT 1",
+                wordId
+        );
+        if (rows.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = rows.get(0);
+        return new WordBase(
+                row.get("english") == null ? "" : String.valueOf(row.get("english")),
+                row.get("sent") == null ? "" : String.valueOf(row.get("sent")),
+                row.get("chinese") == null ? "" : String.valueOf(row.get("chinese"))
+        );
+    }
     private WordMeta selectWordMetaSafely(Long wordId, String wordType, String style) {
         try {
             return wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
@@ -812,7 +917,8 @@ public class WordServiceImpl implements WordService {
         }
         String trimmed = synonymsJson.trim();
         return !"[]".equals(trimmed) && !"null".equalsIgnoreCase(trimmed);
-    }    private WordMeta normalizePendingWhenCloudUnavailable(WordMeta wordMeta) {
+    }
+    private WordMeta normalizePendingWhenCloudUnavailable(WordMeta wordMeta) {
         if (wordMeta == null || !"pending".equalsIgnoreCase(wordMeta.getGenStatus())) {
             return wordMeta;
         }
@@ -854,7 +960,8 @@ public class WordServiceImpl implements WordService {
                 || !StringUtils.hasText(cloudLlmProperties.getBaseUrl())
                 || !StringUtils.hasText(cloudLlmProperties.getModel())
                 || !StringUtils.hasText(cloudLlmProperties.getApiKey());
-    }    private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
+    }
+    private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
         return WordDetailResponse.LlmContent.builder()
                 .genStatus("fallback")
                 .style(style)
@@ -892,3 +999,10 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
+
+
+
+
+
