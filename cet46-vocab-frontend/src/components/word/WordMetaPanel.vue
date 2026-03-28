@@ -105,7 +105,7 @@ const displaySmartExplain = computed(() => formatSmartExplain(smartExplain.value
 const displayGrammarUsage = computed(() => {
   const direct = (props.llmContent?.grammarUsage || '').trim()
   if (direct) return direct
-  return extractPrefixedLine(displaySmartExplain.value, '语法用法：')
+  return extractGrammarUsage(displaySmartExplain.value)
 })
 const explainStatus = computed(() => props.llmContent?.explainStatus || 'pending')
 const hasSentence = computed(() => !!(sentenceEn.value || sentenceZh.value))
@@ -216,6 +216,16 @@ function extractPrefixedLine(text, prefix) {
   if (!text) return ''
   const line = text.split('\n').find((item) => item.startsWith(prefix))
   return line ? line.replace(prefix, '').trim() : ''
+}
+
+function extractGrammarUsage(text) {
+  if (!text) return ''
+  const prefixes = ['语法用法：', '语法用法:', 'Grammar usage:', 'Grammar usage：']
+  for (const prefix of prefixes) {
+    const value = extractPrefixedLine(text, prefix)
+    if (value) return value
+  }
+  return ''
 }
 
 function buildGrammarUsage(grammar) {

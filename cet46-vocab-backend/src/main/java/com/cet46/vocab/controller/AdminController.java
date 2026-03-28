@@ -78,7 +78,7 @@ public class AdminController {
         List<Long> candidateWordIds = findCandidateWordIds(wordType, style, limit);
 
         for (Long wordId : candidateWordIds) {
-            llmAsyncService.generateWordContent(wordId, wordType, style, LlmProvider.LOCAL);
+            llmAsyncService.generateWordContent(wordId, wordType, style, LlmProvider.LOCAL, null);
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -138,7 +138,7 @@ public class AdminController {
         }
 
         clearCache(req.getWordId(), wordType, style, promptType);
-        llmAsyncService.regenerateWordContent(req.getWordId(), wordType, style, LlmProvider.LOCAL);
+        llmAsyncService.regenerateWordContent(req.getWordId(), wordType, style, LlmProvider.LOCAL, null);
 
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", "regenerate_task_" + UUID.randomUUID());
@@ -286,3 +286,4 @@ public class AdminController {
         private String mnemonic;
     }
 }
+

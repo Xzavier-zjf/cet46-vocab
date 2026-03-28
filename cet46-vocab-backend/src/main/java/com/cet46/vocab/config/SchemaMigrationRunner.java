@@ -20,6 +20,7 @@ public class SchemaMigrationRunner {
     @PostConstruct
     public void migrate() {
         ensureUserLlmProviderColumn();
+        ensureUserLlmLocalModelColumn();
         ensureWordMetaAiExplainColumns();
         ensureWordImportBatchTables();
     }
@@ -42,6 +43,27 @@ public class SchemaMigrationRunner {
             log.info("added user.llm_provider column with default local");
         } catch (Exception ex) {
             log.error("failed to ensure user.llm_provider column", ex);
+        }
+    }
+
+    private void ensureUserLlmLocalModelColumn() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM information_schema.COLUMNS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'llm_local_model'",
+                    Integer.class
+            );
+            if (exists != null && exists > 0) {
+                return;
+            }
+
+            jdbcTemplate.execute(
+                    "ALTER TABLE user " +
+                            "ADD COLUMN llm_local_model VARCHAR(128) NULL AFTER llm_provider"
+            );
+            log.info("added user.llm_local_model column");
+        } catch (Exception ex) {
+            log.error("failed to ensure user.llm_local_model column", ex);
         }
     }
 

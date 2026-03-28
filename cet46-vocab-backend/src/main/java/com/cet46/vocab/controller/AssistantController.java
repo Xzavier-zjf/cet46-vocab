@@ -9,6 +9,7 @@ import com.cet46.vocab.entity.User;
 import com.cet46.vocab.llm.CloudLlmClient;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.llm.OllamaClient;
+import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.llm.PromptTemplate;
 import com.cet46.vocab.mapper.UserMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -32,25 +33,27 @@ public class AssistantController {
     private static final String MODE_QUICK = "quick";
     private static final String MODE_BALANCED = "balanced";
     private static final String MODE_DETAILED = "detailed";
-    private static final int MAX_CONTINUATION_ROUNDS = 2;
-    private static final int OVERLAP_MIN_LEN = 20;
+        private static final int OVERLAP_MIN_LEN = 20;
 
     private final UserMapper userMapper;
     private final OllamaClient ollamaClient;
     private final CloudLlmClient cloudLlmClient;
     private final CloudLlmProperties cloudLlmProperties;
     private final ObjectMapper objectMapper;
+    private final LlmUsageTracker llmUsageTracker;
 
     public AssistantController(UserMapper userMapper,
                                OllamaClient ollamaClient,
                                CloudLlmClient cloudLlmClient,
                                CloudLlmProperties cloudLlmProperties,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               LlmUsageTracker llmUsageTracker) {
         this.userMapper = userMapper;
         this.ollamaClient = ollamaClient;
         this.cloudLlmClient = cloudLlmClient;
         this.cloudLlmProperties = cloudLlmProperties;
         this.objectMapper = objectMapper;
+        this.llmUsageTracker = llmUsageTracker;
     }
 
     @PostMapping("/chat")
@@ -64,6 +67,7 @@ public class AssistantController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String normalizedProvider = chooseProvider(provider);
+        String localModel = resolveUserLocalModel(userId);
         String answerMode = normalizeAnswerMode(req.getAnswerMode());
         ModeConfig modeConfig = resolveModeConfig(answerMode);
         String prompt = buildAssistantPrompt(req, style, answerMode, modeConfig);
@@ -72,14 +76,15 @@ public class AssistantController {
             String effectiveProvider = normalizedProvider;
             GeneratedAnswer generated;
             try {
-                generated = generateCompleteAnswer(prompt, normalizedProvider, modeConfig);
+                generated = generateCompleteAnswer(prompt, normalizedProvider, modeConfig, localModel);
             } catch (Exception firstEx) {
                 if (!LlmProvider.CLOUD.equals(normalizedProvider)) {
                     throw firstEx;
                 }
-                generated = generateCompleteAnswer(prompt, LlmProvider.LOCAL, modeConfig);
+                generated = generateCompleteAnswer(prompt, LlmProvider.LOCAL, modeConfig, localModel);
                 effectiveProvider = LlmProvider.LOCAL;
             }
+            llmUsageTracker.record(userId, effectiveProvider, resolveUsedModel(effectiveProvider, localModel), "assistant.chat");
             AssistantChatResponse data = AssistantChatResponse.builder()
                     .answer(cleanAnswer(generated.content()))
                     .provider(effectiveProvider)
@@ -94,13 +99,13 @@ public class AssistantController {
         }
     }
 
-    private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig) {
+    private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig, String localModel) {
         String merged = "";
         String currentPrompt = prompt;
         int continuationRounds = 0;
 
-        for (int i = 0; i <= MAX_CONTINUATION_ROUNDS; i++) {
-            GenerationChunk chunk = callModel(currentPrompt, provider, modeConfig);
+        for (int i = 0; i <= modeConfig.maxContinuationRounds(); i++) {
+            GenerationChunk chunk = callModel(currentPrompt, provider, modeConfig, localModel);
             String piece = chunk.content() == null ? "" : chunk.content().trim();
             if (!StringUtils.hasText(piece)) {
                 break;
@@ -109,18 +114,22 @@ public class AssistantController {
             if (!chunk.truncated()) {
                 break;
             }
+            if (merged.length() >= modeConfig.maxAnswerChars()) {
+                merged = trimText(merged, modeConfig.maxAnswerChars());
+                break;
+            }
             continuationRounds += 1;
             currentPrompt = buildContinuationPrompt(prompt, merged);
         }
-        return new GeneratedAnswer(merged, continuationRounds);
+        return new GeneratedAnswer(trimText(merged, modeConfig.maxAnswerChars()), continuationRounds);
     }
 
-    private GenerationChunk callModel(String prompt, String provider, ModeConfig modeConfig) {
+    private GenerationChunk callModel(String prompt, String provider, ModeConfig modeConfig, String localModel) {
         if (LlmProvider.CLOUD.equals(provider)) {
             CloudLlmClient.GenerationResult result = cloudLlmClient.generateWithMeta(prompt, modeConfig.cloudMaxTokens());
             return new GenerationChunk(result.content(), result.truncated());
         }
-        OllamaClient.GenerationResult result = ollamaClient.generatePlainTextWithMeta(prompt, modeConfig.localNumPredict());
+        OllamaClient.GenerationResult result = ollamaClient.generatePlainTextWithMeta(prompt, modeConfig.localNumPredict(), localModel);
         return new GenerationChunk(result.content(), result.truncated());
     }
 
@@ -186,6 +195,14 @@ public class AssistantController {
         return LlmProvider.normalize(user.getLlmProvider());
     }
 
+    private String resolveUserLocalModel(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || !StringUtils.hasText(user.getLlmLocalModel())) {
+            return null;
+        }
+        return user.getLlmLocalModel().trim();
+    }
+
     private String chooseProvider(String preferredProvider) {
         String normalized = LlmProvider.normalize(preferredProvider);
         if (LlmProvider.CLOUD.equals(normalized) && !isCloudAvailable()) {
@@ -201,6 +218,15 @@ public class AssistantController {
                 && StringUtils.hasText(cloudLlmProperties.getApiKey());
     }
 
+    private String resolveUsedModel(String provider, String localModel) {
+        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
+            return cloudLlmProperties.getModel();
+        }
+        if (StringUtils.hasText(localModel)) {
+            return localModel.trim();
+        }
+        return ollamaClient.getDefaultModel();
+    }
     private String normalizeAnswerMode(String answerMode) {
         if (!StringUtils.hasText(answerMode)) {
             return MODE_BALANCED;
@@ -217,9 +243,11 @@ public class AssistantController {
             return new ModeConfig(
                     2,
                     220,
-                    260,
-                    280,
-                    "Give a concise answer in 3-5 short points."
+                    180,
+                    200,
+                    "Give a concise answer in 2-4 short points.",
+                    0,
+                    420
             );
         }
         if (MODE_DETAILED.equals(answerMode)) {
@@ -228,15 +256,19 @@ public class AssistantController {
                     420,
                     680,
                     760,
-                    "Give a detailed structured answer with examples and a brief action plan."
+                    "Give a detailed structured answer with examples and a brief action plan.",
+                    2,
+                    1800
             );
         }
         return new ModeConfig(
                 4,
                 320,
-                420,
-                520,
-                "Give a balanced practical answer with clear structure."
+                360,
+                480,
+                "Give a balanced practical answer with clear structure.",
+                1,
+                900
         );
     }
 
@@ -409,7 +441,9 @@ public class AssistantController {
                               int textLimit,
                               int localNumPredict,
                               int cloudMaxTokens,
-                              String lengthInstruction) {
+                              String lengthInstruction,
+                              int maxContinuationRounds,
+                              int maxAnswerChars) {
     }
 
     private record GenerationChunk(String content, boolean truncated) {
@@ -418,3 +452,8 @@ public class AssistantController {
     private record GeneratedAnswer(String content, int continuationRounds) {
     }
 }
+
+
+
+
+

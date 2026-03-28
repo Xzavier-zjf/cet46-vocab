@@ -24,6 +24,7 @@ public class User {
     private String role;
     private String llmStyle;
     private String llmProvider;
+    private String llmLocalModel;
     private Integer dailyTarget;
 
     @TableField(fill = FieldFill.INSERT)
@@ -32,3 +33,4 @@ public class User {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }
+

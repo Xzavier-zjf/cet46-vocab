@@ -66,26 +66,26 @@ public class LlmAsyncService {
     }
 
     @Async("llmTaskExecutor")
-    public void generateWordContent(Long wordId, String wordType, String style, String provider) {
-        doGenerateWordContent(wordId, wordType, style, provider, false);
+    public void generateWordContent(Long wordId, String wordType, String style, String provider, String localModel) {
+        doGenerateWordContent(wordId, wordType, style, provider, localModel, false);
     }
 
     @Async("llmTaskExecutor")
-    public void regenerateWordContent(Long wordId, String wordType, String style, String provider) {
-        doGenerateWordContent(wordId, wordType, style, provider, true);
+    public void regenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel) {
+        doGenerateWordContent(wordId, wordType, style, provider, localModel, true);
     }
 
     @Async("llmTaskExecutor")
-    public void generateWordExplainContent(Long wordId, String wordType, String style, String provider) {
-        doGenerateWordExplainContent(wordId, wordType, style, provider, false);
+    public void generateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, false);
     }
 
     @Async("llmTaskExecutor")
-    public void regenerateWordExplainContent(Long wordId, String wordType, String style, String provider) {
-        doGenerateWordExplainContent(wordId, wordType, style, provider, true);
+    public void regenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, true);
     }
 
-    private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, boolean forceRefresh) {
+    private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel, boolean forceRefresh) {
         String normalizedProvider = LlmProvider.normalize(provider);
         try {
             String sentenceHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style);
@@ -127,7 +127,7 @@ public class LlmAsyncService {
 
             if (!StringUtils.hasText(sentenceContent)) {
                 try {
-                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()), normalizedProvider);
+                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()), normalizedProvider, localModel);
                 } catch (Exception ex) {
                     timeoutOccurred = logGenerationFailure("sentence", wordId, wordType, style, normalizedProvider, ex) || timeoutOccurred;
                 }
@@ -148,17 +148,17 @@ public class LlmAsyncService {
                 // Local models are often single-worker; sequential calls reduce timeout/failure rate.
                 synonymAttempt = generateSync(
                         synonymContent, "synonym", PromptType.SYNONYM,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
                 mnemonicAttempt = generateSync(
                         mnemonicContent, "mnemonic", PromptType.MNEMONIC,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
             } else {
                 CompletableFuture<GenerationAttempt> synonymFuture = generateAsync(
                         synonymContent, "synonym", PromptType.SYNONYM,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
                 CompletableFuture<GenerationAttempt> mnemonicFuture = generateAsync(
                         mnemonicContent, "mnemonic", PromptType.MNEMONIC,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
                 synonymAttempt = synonymFuture.join();
                 mnemonicAttempt = mnemonicFuture.join();
             }
@@ -180,7 +180,7 @@ public class LlmAsyncService {
             mnemonicResult = ensureMnemonicResult(mnemonicResult, mnemonicContent);
             if (shouldTrySupplement(synonymResult, mnemonicResult)) {
                 try {
-                    String supplement = safeGenerate(buildSupplementPrompt(wordBase, wordMeta.getPos()), normalizedProvider);
+                    String supplement = safeGenerate(buildSupplementPrompt(wordBase, wordMeta.getPos()), normalizedProvider, localModel);
                     LlmResponseParser.SynonymResult supplementSynonym = llmResponseParser.parseSynonym(defaultString(supplement));
                     LlmResponseParser.MnemonicResult supplementMnemonic = llmResponseParser.parseMnemonic(defaultString(supplement));
                     supplementSynonym = ensureSynonymResult(supplementSynonym, supplement);
@@ -203,7 +203,7 @@ public class LlmAsyncService {
         }
     }
 
-    private void doGenerateWordExplainContent(Long wordId, String wordType, String style, String provider, boolean forceRefresh) {
+    private void doGenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel, boolean forceRefresh) {
         String normalizedProvider = LlmProvider.normalize(provider);
         String explainHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "explain", style);
         try {
@@ -225,7 +225,7 @@ public class LlmAsyncService {
             String pos = StringUtils.hasText(wordMeta.getPos()) ? wordMeta.getPos() : parsePos(wordBase.chinese);
             if (!StringUtils.hasText(explain)) {
                 String prompt = buildExplainPrompt(wordBase, pos, resolveLevel(wordType), "");
-                explain = safeGenerate(prompt, normalizedProvider);
+                explain = safeGenerate(prompt, normalizedProvider, localModel);
                 if (StringUtils.hasText(explain)) {
                     llmCacheService.setCache(explainHash, explain);
                 }
@@ -366,14 +366,14 @@ public class LlmAsyncService {
         );
         return rows.isEmpty() ? null : rows.get(0);
     }
-    private String safeGenerate(String prompt, String provider) {
+    private String safeGenerate(String prompt, String provider, String localModel) {
         if (!StringUtils.hasText(prompt)) {
             return null;
         }
         if (LlmProvider.CLOUD.equals(provider)) {
             return cloudLlmClient.generate(prompt);
         }
-        return ollamaClient.generate(prompt);
+        return ollamaClient.generate(prompt, localModel);
     }
 
     private String buildPrompt(PromptType type, String style, WordBase wordBase, String pos) {
@@ -832,6 +832,7 @@ public class LlmAsyncService {
                                                                 WordBase wordBase,
                                                                 String pos,
                                                                 String provider,
+                                                                String localModel,
                                                                 Long wordId,
                                                                 String wordType) {
         if (StringUtils.hasText(existingContent)) {
@@ -840,7 +841,7 @@ public class LlmAsyncService {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String prompt = buildPrompt(promptEnum, style, wordBase, pos);
-                String content = safeGenerate(prompt, provider);
+                String content = safeGenerate(prompt, provider, localModel);
                 return new GenerationAttempt(content, false);
             } catch (Exception ex) {
                 boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
@@ -856,14 +857,15 @@ public class LlmAsyncService {
                                            WordBase wordBase,
                                            String pos,
                                            String provider,
-                                           Long wordId,
-                                           String wordType) {
+                                                                String localModel,
+                                                                Long wordId,
+                                                                String wordType) {
         if (StringUtils.hasText(existingContent)) {
             return new GenerationAttempt(existingContent, false);
         }
         try {
             String prompt = buildPrompt(promptEnum, style, wordBase, pos);
-            String content = safeGenerate(prompt, provider);
+            String content = safeGenerate(prompt, provider, localModel);
             return new GenerationAttempt(content, false);
         } catch (Exception ex) {
             boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
@@ -1006,3 +1008,6 @@ public class LlmAsyncService {
     private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
+
+
+

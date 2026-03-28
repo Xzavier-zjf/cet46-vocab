@@ -16,6 +16,7 @@ public class UserInfoResponse {
     private String avatar;
     private String llmStyle;
     private String llmProvider;
+    private String llmLocalModel;
     private Integer dailyTarget;
     private Integer totalDays;
     private Integer streakDays;

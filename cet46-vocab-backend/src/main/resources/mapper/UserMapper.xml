@@ -13,13 +13,14 @@
         <result property="role" column="role"/>
         <result property="llmStyle" column="llm_style"/>
         <result property="llmProvider" column="llm_provider"/>
+        <result property="llmLocalModel" column="llm_local_model"/>
         <result property="dailyTarget" column="daily_target"/>
         <result property="createdAt" column="created_at"/>
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
     <select id="selectByUsername" resultMap="UserResultMap">
-        SELECT id, username, password, nickname, avatar, role, llm_style, llm_provider, daily_target, created_at, updated_at
+        SELECT id, username, password, nickname, avatar, role, llm_style, llm_provider, llm_local_model, daily_target, created_at, updated_at
         FROM user
         WHERE username = #{username}
         LIMIT 1

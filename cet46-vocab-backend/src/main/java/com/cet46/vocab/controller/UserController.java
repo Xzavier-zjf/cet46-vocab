@@ -2,19 +2,21 @@ package com.cet46.vocab.controller;
 
 import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
-import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.request.ChangePasswordRequest;
+import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
+import com.cet46.vocab.dto.response.LocalModelListResponse;
+import com.cet46.vocab.dto.response.LlmLastUsedResponse;
 import com.cet46.vocab.dto.response.UserInfoResponse;
 import com.cet46.vocab.service.UserService;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -83,6 +85,24 @@ public class UserController {
         }
         Long userId = Long.valueOf(authentication.getPrincipal().toString());
         return Result.success(userService.checkLocalLlmHealth(userId));
+    }
+
+    @GetMapping("/llm/local-models")
+    public Result<LocalModelListResponse> getLocalModels(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        Long userId = Long.valueOf(authentication.getPrincipal().toString());
+        return Result.success(userService.getLocalModels(userId));
+    }
+
+    @GetMapping("/llm/last-used")
+    public Result<LlmLastUsedResponse> getLastUsedLlm(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        Long userId = Long.valueOf(authentication.getPrincipal().toString());
+        return Result.success(userService.getLastUsedLlm(userId));
     }
 
     @PutMapping("/password")

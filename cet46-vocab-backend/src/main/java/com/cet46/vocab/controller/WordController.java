@@ -15,6 +15,7 @@ import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
+import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
 import com.cet46.vocab.service.WordService;
@@ -44,17 +45,20 @@ public class WordController {
     private final UserMapper userMapper;
     private final WordMetaMapper wordMetaMapper;
     private final CloudLlmProperties cloudLlmProperties;
+    private final LlmUsageTracker llmUsageTracker;
 
     public WordController(WordService wordService,
                           LlmAsyncService llmAsyncService,
                           UserMapper userMapper,
                           WordMetaMapper wordMetaMapper,
-                          CloudLlmProperties cloudLlmProperties) {
+                          CloudLlmProperties cloudLlmProperties,
+                          LlmUsageTracker llmUsageTracker) {
         this.wordService = wordService;
         this.llmAsyncService = llmAsyncService;
         this.userMapper = userMapper;
         this.wordMetaMapper = wordMetaMapper;
         this.cloudLlmProperties = cloudLlmProperties;
+        this.llmUsageTracker = llmUsageTracker;
     }
 
     @GetMapping("/list")
@@ -112,11 +116,13 @@ public class WordController {
         String taskId = "llm_task_" + UUID.randomUUID();
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
+        String localModel = resolveUserLocalModel(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider);
+        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.regenerate");
+        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel);
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", taskId);
         data.put("status", "pending");
@@ -138,11 +144,13 @@ public class WordController {
         }
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
+        String localModel = resolveUserLocalModel(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider);
+        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.regenerateExplain");
+        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel);
         Map<String, Object> data = new HashMap<>();
         data.put("status", "pending");
         data.put("style", style);
@@ -166,8 +174,9 @@ public class WordController {
         int batchLimit = limit == null ? 20 : Math.min(Math.max(limit, 1), 200);
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
+        String localModel = resolveUserLocalModel(userId);
         if (isCloudUnavailable(provider)) {
-            return Result.fail(ResultCode.LLM_ERROR.getCode(), "云端API未配置完成，请先在后端配置 llm.cloud.api-key");
+            return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
 
         LambdaQueryWrapper<WordMeta> wrapper = new LambdaQueryWrapper<>();
@@ -191,8 +200,9 @@ public class WordController {
         }
         for (Long pendingWordId : pendingWordIds) {
             wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());
-            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider);
-            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider);
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.retryPending");
+            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel);
+            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider, localModel);
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -260,6 +270,22 @@ public class WordController {
         return LlmProvider.normalize(user.getLlmProvider());
     }
 
+    private String resolveUserLocalModel(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || !StringUtils.hasText(user.getLlmLocalModel())) {
+            return null;
+        }
+        return user.getLlmLocalModel().trim();
+    }
+    private String resolveUsedModel(String provider, String localModel) {
+        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
+            return cloudLlmProperties.getModel();
+        }
+        if (StringUtils.hasText(localModel)) {
+            return localModel.trim();
+        }
+        return null;
+    }
     private boolean isCloudUnavailable(String provider) {
         if (!LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
             return false;

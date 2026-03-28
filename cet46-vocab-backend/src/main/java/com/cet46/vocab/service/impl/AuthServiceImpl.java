@@ -8,11 +8,11 @@ import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.service.AuthService;
 import com.cet46.vocab.utils.JwtUtils;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.data.redis.core.RedisTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -64,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
                 .avatar(user.getAvatar())
                 .llmStyle(user.getLlmStyle())
                 .llmProvider(LlmProvider.normalize(user.getLlmProvider()))
+                .llmLocalModel(user.getLlmLocalModel())
                 .dailyTarget(user.getDailyTarget())
                 .totalDays(0)
                 .streakDays(0)
@@ -90,6 +91,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("role", user.getRole());
         result.put("llmStyle", user.getLlmStyle());
         result.put("llmProvider", LlmProvider.normalize(user.getLlmProvider()));
+        result.put("llmLocalModel", user.getLlmLocalModel());
         return result;
     }
 

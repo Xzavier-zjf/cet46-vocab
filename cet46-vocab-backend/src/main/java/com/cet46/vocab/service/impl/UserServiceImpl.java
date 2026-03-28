@@ -1,13 +1,17 @@
 package com.cet46.vocab.service.impl;
 
-import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.request.ChangePasswordRequest;
+import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
+import com.cet46.vocab.dto.response.LocalModelItemResponse;
+import com.cet46.vocab.dto.response.LocalModelListResponse;
+import com.cet46.vocab.dto.response.LlmLastUsedResponse;
 import com.cet46.vocab.dto.response.UserInfoResponse;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.llm.CloudLlmClient;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.llm.OllamaClient;
+import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.service.UserService;
 import org.slf4j.Logger;
@@ -21,15 +25,15 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.sql.Date;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 
 @Service
 public class UserServiceImpl implements UserService {
@@ -42,17 +46,20 @@ public class UserServiceImpl implements UserService {
     private final CloudLlmClient cloudLlmClient;
     private final OllamaClient ollamaClient;
     private final PasswordEncoder passwordEncoder;
+    private final LlmUsageTracker llmUsageTracker;
 
     public UserServiceImpl(UserMapper userMapper,
                            JdbcTemplate jdbcTemplate,
                            CloudLlmClient cloudLlmClient,
                            OllamaClient ollamaClient,
-                           PasswordEncoder passwordEncoder) {
+                           PasswordEncoder passwordEncoder,
+                           LlmUsageTracker llmUsageTracker) {
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.cloudLlmClient = cloudLlmClient;
         this.ollamaClient = ollamaClient;
         this.passwordEncoder = passwordEncoder;
+        this.llmUsageTracker = llmUsageTracker;
     }
 
     @Override
@@ -73,6 +80,7 @@ public class UserServiceImpl implements UserService {
                 .avatar(user.getAvatar())
                 .llmStyle(user.getLlmStyle())
                 .llmProvider(LlmProvider.normalize(user.getLlmProvider()))
+                .llmLocalModel(normalizeModelName(user.getLlmLocalModel()))
                 .dailyTarget(user.getDailyTarget())
                 .totalDays(totalDays)
                 .streakDays(streakDays)
@@ -90,11 +98,26 @@ public class UserServiceImpl implements UserService {
         if (StringUtils.hasText(req.getLlmStyle())) {
             user.setLlmStyle(req.getLlmStyle());
         }
-        if (StringUtils.hasText(req.getLlmProvider())) {
-            user.setLlmProvider(LlmProvider.normalize(req.getLlmProvider()));
-        } else {
-            user.setLlmProvider(LlmProvider.normalize(user.getLlmProvider()));
+
+        String provider = StringUtils.hasText(req.getLlmProvider())
+                ? LlmProvider.normalize(req.getLlmProvider())
+                : LlmProvider.normalize(user.getLlmProvider());
+        user.setLlmProvider(provider);
+
+        if (req.getLlmLocalModel() != null) {
+            String localModel = normalizeModelName(req.getLlmLocalModel());
+            if (StringUtils.hasText(localModel) && !ollamaClient.isModelInstalled(localModel)) {
+                throw new IllegalArgumentException("llmLocalModel is not installed: " + localModel);
+            }
+            user.setLlmLocalModel(localModel);
         }
+
+        if (LlmProvider.LOCAL.equals(provider)
+                && StringUtils.hasText(user.getLlmLocalModel())
+                && !ollamaClient.isModelInstalled(user.getLlmLocalModel())) {
+            throw new IllegalArgumentException("llmLocalModel is not installed: " + user.getLlmLocalModel());
+        }
+
         user.setDailyTarget(req.getDailyTarget());
         userMapper.updateById(user);
     }
@@ -145,11 +168,100 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new UsernameNotFoundException("user not found");
         }
-        CloudLlmHealthResponse response = ollamaClient.healthCheck();
+        String selectedModel = StringUtils.hasText(user.getLlmLocalModel())
+                ? user.getLlmLocalModel().trim()
+                : null;
+        CloudLlmHealthResponse response = ollamaClient.healthCheck(selectedModel);
         response.setCurrentProvider(LlmProvider.normalize(user.getLlmProvider()));
         return response;
     }
 
+    @Override
+    public LocalModelListResponse getLocalModels(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new UsernameNotFoundException("user not found");
+        }
+
+        try {
+            List<OllamaClient.LocalModelInfo> models = ollamaClient.listModels();
+            List<LocalModelItemResponse> items = models.stream()
+                    .map(item -> LocalModelItemResponse.builder()
+                            .name(item.name())
+                            .sizeBytes(item.sizeBytes())
+                            .modifiedAt(item.modifiedAt())
+                            .digest(item.digest())
+                            .build())
+                    .toList();
+            String selectedModel = resolveSelectedModel(user.getLlmLocalModel(), items);
+
+            return LocalModelListResponse.builder()
+                    .serviceUp(true)
+                    .baseUrl(ollamaClient.getBaseUrl())
+                    .count(items.size())
+                    .selectedModel(selectedModel)
+                    .defaultModel(ollamaClient.getDefaultModel())
+                    .models(items)
+                    .message("\u672c\u5730\u6a21\u578b\u5217\u8868\u83b7\u53d6\u6210\u529f")
+                    .build();
+        } catch (Exception ex) {
+            log.warn("failed to list local ollama models", ex);
+            String selectedModel = StringUtils.hasText(user.getLlmLocalModel())
+                    ? user.getLlmLocalModel().trim()
+                    : "";
+            return LocalModelListResponse.builder()
+                    .serviceUp(false)
+                    .baseUrl(ollamaClient.getBaseUrl())
+                    .count(0)
+                    .selectedModel(selectedModel)
+                    .defaultModel(ollamaClient.getDefaultModel())
+                    .models(List.of())
+                    .message("\u65e0\u6cd5\u8fde\u63a5\u672c\u5730\u6a21\u578b\u670d\u52a1")
+                    .build();
+        }
+    }
+
+    private String resolveSelectedModel(String savedModel, List<LocalModelItemResponse> items) {
+        if (StringUtils.hasText(savedModel) && containsModel(items, savedModel.trim())) {
+            return savedModel.trim();
+        }
+        String defaultModel = ollamaClient.getDefaultModel();
+        if (StringUtils.hasText(defaultModel) && containsModel(items, defaultModel.trim())) {
+            return defaultModel.trim();
+        }
+        if (items != null && !items.isEmpty() && StringUtils.hasText(items.get(0).getName())) {
+            return items.get(0).getName().trim();
+        }
+        return "";
+    }
+
+    private boolean containsModel(List<LocalModelItemResponse> items, String model) {
+        if (items == null || items.isEmpty() || !StringUtils.hasText(model)) {
+            return false;
+        }
+        for (LocalModelItemResponse item : items) {
+            if (item != null && StringUtils.hasText(item.getName()) && model.equals(item.getName().trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    
+    @Override
+    public LlmLastUsedResponse getLastUsedLlm(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new UsernameNotFoundException("user not found");
+        }
+        LlmUsageTracker.UsageSnapshot snapshot = llmUsageTracker.get(userId);
+        return LlmLastUsedResponse.builder()
+                .provider(snapshot.provider())
+                .model(snapshot.model())
+                .source(snapshot.source())
+                .updatedAt(snapshot.updatedAt())
+                .build();
+    }
     @Override
     public void changePassword(Long userId, ChangePasswordRequest req) {
         User user = userMapper.selectById(userId);
@@ -157,10 +269,10 @@ public class UserServiceImpl implements UserService {
             throw new UsernameNotFoundException("user not found");
         }
         if (!passwordEncoder.matches(req.getOldPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("\u65E7\u5BC6\u7801\u4E0D\u6B63\u786E");
+            throw new IllegalArgumentException("\u65e7\u5bc6\u7801\u4e0d\u6b63\u786e");
         }
         if (req.getOldPassword().equals(req.getNewPassword())) {
-            throw new IllegalArgumentException("\u65B0\u5BC6\u7801\u4E0D\u80FD\u4E0E\u65E7\u5BC6\u7801\u76F8\u540C");
+            throw new IllegalArgumentException("\u65b0\u5bc6\u7801\u4e0d\u80fd\u4e0e\u65e7\u5bc6\u7801\u76f8\u540c");
         }
         user.setPassword(passwordEncoder.encode(req.getNewPassword()));
         userMapper.updateById(user);
@@ -224,6 +336,13 @@ public class UserServiceImpl implements UserService {
             return ".png";
         }
         return ext;
+    }
+
+    private String normalizeModelName(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     private List<LocalDate> queryDistinctReviewDates(Long userId) {

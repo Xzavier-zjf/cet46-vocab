@@ -12,6 +12,7 @@ export const useUserStore = defineStore('user', {
     role: '',
     llmStyle: null,
     llmProvider: 'local',
+    llmLocalModel: '',
     dailyTarget: 20
   }),
   actions: {
@@ -25,6 +26,7 @@ export const useUserStore = defineStore('user', {
       this.role = data.role || ''
       this.llmStyle = data.llmStyle ?? null
       this.llmProvider = data.llmProvider || 'local'
+      this.llmLocalModel = data.llmLocalModel || ''
       this.dailyTarget = data.dailyTarget ?? 20
       if (this.token) {
         setToken(this.token)
@@ -39,6 +41,7 @@ export const useUserStore = defineStore('user', {
       this.role = ''
       this.llmStyle = null
       this.llmProvider = 'local'
+      this.llmLocalModel = ''
       this.dailyTarget = 20
       removeToken()
     },
@@ -52,6 +55,7 @@ export const useUserStore = defineStore('user', {
         this.role = res.data.role || ''
         this.llmStyle = res.data.llmStyle ?? null
         this.llmProvider = res.data.llmProvider || 'local'
+        this.llmLocalModel = res.data.llmLocalModel || ''
         this.dailyTarget = res.data.dailyTarget ?? 20
       }
       return res

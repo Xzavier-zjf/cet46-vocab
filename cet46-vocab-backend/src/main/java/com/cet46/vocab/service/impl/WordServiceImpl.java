@@ -15,6 +15,7 @@ import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
+import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.UserMapper;
@@ -54,7 +55,7 @@ public class WordServiceImpl implements WordService {
     private static final String STATUS_NOT_LEARNING = "NOT_LEARNING";
     private static final String STATUS_LEARNING = "LEARNING";
     private static final String STATUS_COMPLETED = "COMPLETED";
-    private static final Duration PENDING_RETRY_INTERVAL = Duration.ofSeconds(8);
+    private static final Duration PENDING_RETRY_INTERVAL = Duration.ofSeconds(30);
 
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
@@ -65,6 +66,7 @@ public class WordServiceImpl implements WordService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final CloudLlmProperties cloudLlmProperties;
+    private final LlmUsageTracker llmUsageTracker;
 
     public WordServiceImpl(Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
@@ -74,7 +76,8 @@ public class WordServiceImpl implements WordService {
                            JdbcTemplate jdbcTemplate,
                            ObjectMapper objectMapper,
                            RedisTemplate<String, Object> redisTemplate,
-                           CloudLlmProperties cloudLlmProperties) {
+                           CloudLlmProperties cloudLlmProperties,
+                           LlmUsageTracker llmUsageTracker) {
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.wordMetaMapper = wordMetaMapper;
@@ -84,6 +87,7 @@ public class WordServiceImpl implements WordService {
         this.objectMapper = objectMapper;
         this.redisTemplate = redisTemplate;
         this.cloudLlmProperties = cloudLlmProperties;
+        this.llmUsageTracker = llmUsageTracker;
     }
 
     @Override
@@ -131,6 +135,7 @@ public class WordServiceImpl implements WordService {
     public WordDetailResponse getWordDetail(Long wordId, String wordType, Long userId) {
         String style = getUserStyle(userId);
         String provider = getUserProvider(userId);
+        String localModel = getUserLocalModel(userId);
         String cacheKey = buildWordDetailCacheKey(userId, style, wordType, wordId);
         Object cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached != null) {
@@ -161,10 +166,12 @@ public class WordServiceImpl implements WordService {
         wordMeta = fixStuckPendingExplainMeta(wordMeta);
         wordMeta = fixInconsistentGeneratedStatus(wordMeta);
         if (shouldTriggerGeneration(wordMeta, provider)) {
-            llmAsyncService.generateWordContent(wordId, wordType, style, provider);
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.detail.generate");
+            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel);
         }
         if (shouldTriggerExplainGeneration(wordMeta, provider)) {
-            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider);
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.detail.generateExplain");
+            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel);
         }
 
         String pos = wordMeta != null && StringUtils.hasText(wordMeta.getPos())
@@ -623,7 +630,7 @@ public class WordServiceImpl implements WordService {
 
     private String fallbackGrammarUsage(String pos) {
         if (!StringUtils.hasText(pos)) {
-            return null;
+            return "\u5173\u6ce8\u8be5\u8bcd\u5728\u53e5\u4e2d\u6210\u5206\u4f4d\u7f6e\u3001\u5e38\u89c1\u642d\u914d\u4e0e\u65f6\u6001/\u5355\u590d\u6570\u53d8\u5316\u3002";
         }
         String normalized = pos.toLowerCase();
         if (normalized.contains("n")) {
@@ -738,6 +745,25 @@ public class WordServiceImpl implements WordService {
         }
         return LlmProvider.normalize(user.getLlmProvider());
     }
+
+    private String getUserLocalModel(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null || !StringUtils.hasText(user.getLlmLocalModel())) {
+            return null;
+        }
+        return user.getLlmLocalModel().trim();
+    }
+    private String resolveUsedModel(String provider, String localModel) {
+        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
+            return cloudLlmProperties.getModel();
+        }
+        if (StringUtils.hasText(localModel)) {
+            return localModel.trim();
+        }
+        return null;
+    }
+
+
 
     private WordBase loadWordBase(Long wordId, String wordType) {
         WordType type = WordType.from(wordType);
@@ -999,6 +1025,10 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
+
+
 
 
 

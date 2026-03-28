@@ -2,6 +2,8 @@ package com.cet46.vocab.llm;
 
 import com.cet46.vocab.config.LlmProperties;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -17,11 +19,16 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Component
 public class OllamaClient {
+
+    private static final Logger log = LoggerFactory.getLogger(OllamaClient.class);
+    private static final Pattern MODEL_SIZE_PATTERN = Pattern.compile("(\\d+(?:\\.\\d+)?)b", Pattern.CASE_INSENSITIVE);
 
     private final LlmProperties llmProperties;
     private final RestTemplate restTemplate;
@@ -35,34 +42,74 @@ public class OllamaClient {
                 .build();
     }
 
+    public String getBaseUrl() {
+        return llmProperties.getBaseUrl();
+    }
+
+    public String getDefaultModel() {
+        return llmProperties.getModel();
+    }
+
     public String generate(String prompt) {
-        return generateWithOptions(prompt, 220, true);
+        return generate(prompt, null);
+    }
+
+    public String generate(String prompt, String modelOverride) {
+        return generateWithOptions(prompt, 220, true, modelOverride);
     }
 
     public String generatePlainText(String prompt, int numPredict) {
+        return generatePlainText(prompt, numPredict, null);
+    }
+
+    public String generatePlainText(String prompt, int numPredict, String modelOverride) {
         int safeNumPredict = Math.max(64, numPredict);
-        return generateWithOptionsMeta(prompt, safeNumPredict, false).content();
+        return generateWithOptionsMeta(prompt, safeNumPredict, false, modelOverride).content();
     }
 
     public GenerationResult generatePlainTextWithMeta(String prompt, int numPredict) {
+        return generatePlainTextWithMeta(prompt, numPredict, null);
+    }
+
+    public GenerationResult generatePlainTextWithMeta(String prompt, int numPredict, String modelOverride) {
         int safeNumPredict = Math.max(64, numPredict);
-        return generateWithOptionsMeta(prompt, safeNumPredict, false);
+        return generateWithOptionsMeta(prompt, safeNumPredict, false, modelOverride);
     }
 
-    private String generateWithOptions(String prompt, int numPredict, boolean includeFormat) {
-        return generateWithOptionsMeta(prompt, numPredict, includeFormat).content();
+    public List<LocalModelInfo> listModels() {
+        return listModelsInternal();
     }
 
-    private GenerationResult generateWithOptionsMeta(String prompt, int numPredict, boolean includeFormat) {
+    public boolean isModelInstalled(String modelName) {
+        if (!StringUtils.hasText(modelName)) {
+            return false;
+        }
+        String target = normalizeModelName(modelName);
+        for (LocalModelInfo item : listModelsInternal()) {
+            if (modelMatches(target, item.name())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String generateWithOptions(String prompt, int numPredict, boolean includeFormat, String modelOverride) {
+        return generateWithOptionsMeta(prompt, numPredict, includeFormat, modelOverride).content();
+    }
+
+    private GenerationResult generateWithOptionsMeta(String prompt, int numPredict, boolean includeFormat, String modelOverride) {
         String url = llmProperties.getBaseUrl() + "/api/generate";
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", llmProperties.getModel());
+        String requestModel = resolveRequestModel(modelOverride);
+        int adjustedNumPredict = adjustNumPredictByModel(numPredict, requestModel);
+        requestBody.put("model", requestModel);
+        log.debug("ollama generate request: model={}, numPredict={}=>{}, think={}", requestModel, numPredict, adjustedNumPredict, false);
         requestBody.put("prompt", prompt);
         requestBody.put("stream", false);
-        requestBody.put("think", Boolean.TRUE.equals(llmProperties.getThink()));
+        requestBody.put("think", false);
         requestBody.put("options", Map.of(
-                "num_predict", numPredict,
+                "num_predict", adjustedNumPredict,
                 "temperature", 0.3
         ));
         if (includeFormat && StringUtils.hasText(llmProperties.getFormat())) {
@@ -106,15 +153,20 @@ public class OllamaClient {
     }
 
     public CloudLlmHealthResponse healthCheck() {
+        return healthCheck(null);
+    }
+
+    public CloudLlmHealthResponse healthCheck(String modelOverride) {
         List<String> details = new ArrayList<>();
         String baseUrl = llmProperties.getBaseUrl();
-        String model = llmProperties.getModel();
+        String model = resolveRequestModel(modelOverride);
         boolean configured = StringUtils.hasText(baseUrl) && StringUtils.hasText(model);
+
         if (!StringUtils.hasText(baseUrl)) {
-            details.add("\u7F3A\u5C11 llm.ollama.base-url");
+            details.add("\u7f3a\u5c11 llm.ollama.base-url");
         }
         if (!StringUtils.hasText(model)) {
-            details.add("\u7F3A\u5C11 llm.ollama.model");
+            details.add("\u7f3a\u5c11 llm.ollama.model");
         }
 
         boolean dnsOk = false;
@@ -126,10 +178,10 @@ public class OllamaClient {
                     InetAddress.getByName(host);
                     dnsOk = true;
                 } else {
-                    details.add("base-url \u672A\u5305\u542B\u53EF\u89E3\u6790 host");
+                    details.add("base-url \u672a\u5305\u542b\u53ef\u89e3\u6790 host");
                 }
             } catch (Exception ex) {
-                details.add("DNS \u89E3\u6790\u5931\u8D25: " + ex.getMessage());
+                details.add("DNS \u89e3\u6790\u5931\u8d25: " + ex.getMessage());
             }
         }
 
@@ -138,27 +190,27 @@ public class OllamaClient {
         if (configured && dnsOk) {
             long start = System.currentTimeMillis();
             try {
-                String probe = probeModelByTags();
+                String probe = probeModelByTags(model);
                 latencyMs = System.currentTimeMillis() - start;
                 modelOk = "ok".equalsIgnoreCase(probe);
                 if (!modelOk) {
-                    details.add("\u672C\u5730\u6A21\u578B\u672A\u5B89\u88C5\u6216\u6A21\u578B\u540D\u4E0D\u5339\u914D");
+                    details.add("\u672c\u5730\u6a21\u578b\u672a\u5b89\u88c5\u6216\u6a21\u578b\u540d\u4e0d\u5339\u914d");
                 }
             } catch (Exception ex) {
                 latencyMs = System.currentTimeMillis() - start;
-                details.add("\u672C\u5730\u6A21\u578B\u8C03\u7528\u5931\u8D25: " + ex.getMessage());
+                details.add("\u672c\u5730\u6a21\u578b\u8c03\u7528\u5931\u8d25: " + ex.getMessage());
             }
         }
 
         String message;
         if (!configured) {
-            message = "\u672C\u5730\u6A21\u578B\u914D\u7F6E\u4E0D\u5B8C\u6574";
+            message = "\u672c\u5730\u6a21\u578b\u914d\u7f6e\u4e0d\u5b8c\u6574";
         } else if (!dnsOk) {
-            message = "\u672C\u5730\u670D\u52A1\u8FDE\u63A5\u5931\u8D25";
+            message = "\u672c\u5730\u670d\u52a1\u8fde\u63a5\u5931\u8d25";
         } else if (!modelOk) {
-            message = "\u672C\u5730\u6A21\u578B\u4E0D\u53EF\u7528";
+            message = "\u672c\u5730\u6a21\u578b\u4e0d\u53ef\u7528";
         } else {
-            message = "\u672C\u5730\u6A21\u578B\u8FDE\u901A\u6B63\u5E38";
+            message = "\u672c\u5730\u6a21\u578b\u8fde\u901a\u6b63\u5e38";
         }
 
         return CloudLlmHealthResponse.builder()
@@ -175,32 +227,127 @@ public class OllamaClient {
                 .build();
     }
 
-    private String probeModelByTags() {
-        String url = llmProperties.getBaseUrl() + "/api/tags";
-        ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
-        Map<?, ?> body = response.getBody();
-        if (body == null) {
+    private String probeModelByTags(String targetModel) {
+        if (!StringUtils.hasText(targetModel)) {
             return null;
         }
-        Object modelsObj = body.get("models");
-        if (!(modelsObj instanceof List<?> models) || models.isEmpty()) {
-            return null;
-        }
-        String target = normalizeModelName(llmProperties.getModel());
-        for (Object item : models) {
-            if (!(item instanceof Map<?, ?> modelMap)) {
-                continue;
-            }
-            Object nameObj = modelMap.get("name");
-            if (nameObj == null) {
-                continue;
-            }
-            String name = normalizeModelName(String.valueOf(nameObj));
-            if (name.equals(target) || name.startsWith(target + ":") || target.startsWith(name + ":")) {
+        String target = normalizeModelName(targetModel);
+        for (LocalModelInfo item : listModelsInternal()) {
+            if (modelMatches(target, item.name())) {
                 return "ok";
             }
         }
         return null;
+    }
+
+    private List<LocalModelInfo> listModelsInternal() {
+        String url = llmProperties.getBaseUrl() + "/api/tags";
+        try {
+            log.info("ollama list models request: {}", url);
+            ResponseEntity<Map> response = restTemplate.getForEntity(url, Map.class);
+            Map<?, ?> body = response.getBody();
+            if (body == null) {
+                log.warn("ollama tags response body is null, url={}", url);
+                return List.of();
+            }
+            Object modelsObj = body.get("models");
+            if (!(modelsObj instanceof List<?> models) || models.isEmpty()) {
+                log.warn("ollama tags response models is empty, url={}", url);
+                return List.of();
+            }
+
+            List<LocalModelInfo> result = new ArrayList<>(models.size());
+            for (Object item : models) {
+                if (!(item instanceof Map<?, ?> modelMap)) {
+                    continue;
+                }
+                Object nameObj = modelMap.get("name");
+                if (nameObj == null) {
+                    continue;
+                }
+                String name = String.valueOf(nameObj).trim();
+                if (!StringUtils.hasText(name)) {
+                    continue;
+                }
+                Long sizeBytes = toLong(modelMap.get("size"));
+                String modifiedAt = toText(modelMap.get("modified_at"));
+                String digest = toText(modelMap.get("digest"));
+                result.add(new LocalModelInfo(name, sizeBytes, modifiedAt, digest));
+            }
+            log.info("ollama list models result: count={}, names={}", result.size(), result.stream().map(LocalModelInfo::name).toList());
+            return result;
+        } catch (Exception ex) {
+            log.error("ollama list models failed, url={}", url, ex);
+            throw ex;
+        }
+    }
+
+    
+    private int adjustNumPredictByModel(int requested, String modelName) {
+        int safeRequested = Math.max(64, requested);
+        double sizeB = extractModelSizeB(modelName);
+        if (sizeB > 0 && sizeB <= 1.0d) {
+            return Math.min(safeRequested, 96);
+        }
+        if (sizeB > 1.0d && sizeB <= 2.0d) {
+            return Math.min(safeRequested, 140);
+        }
+        if (sizeB > 2.0d && sizeB <= 4.0d) {
+            return Math.min(safeRequested, 220);
+        }
+        return safeRequested;
+    }
+
+    private double extractModelSizeB(String modelName) {
+        if (!StringUtils.hasText(modelName)) {
+            return -1;
+        }
+        Matcher matcher = MODEL_SIZE_PATTERN.matcher(modelName);
+        double result = -1;
+        while (matcher.find()) {
+            String value = matcher.group(1);
+            try {
+                result = Double.parseDouble(value);
+            } catch (Exception ignore) {
+                // Ignore invalid capture and continue with next candidate.
+            }
+        }
+        return result;
+    }
+    private Long toLong(Object value) {
+        if (value instanceof Number n) {
+            return n.longValue();
+        }
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(String.valueOf(value));
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private String toText(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = String.valueOf(value).trim();
+        return StringUtils.hasText(text) ? text : null;
+    }
+
+    private boolean modelMatches(String normalizedTarget, String candidateName) {
+        String name = normalizeModelName(candidateName);
+        return name.equals(normalizedTarget)
+                || name.startsWith(normalizedTarget + ":")
+                || normalizedTarget.startsWith(name + ":");
+    }
+
+    private String resolveRequestModel(String modelOverride) {
+        if (StringUtils.hasText(modelOverride)) {
+            return modelOverride.trim();
+        }
+        return llmProperties.getModel();
     }
 
     private String normalizeModelName(String value) {
@@ -218,5 +365,8 @@ public class OllamaClient {
     }
 
     public record GenerationResult(String content, boolean truncated) {
+    }
+
+    public record LocalModelInfo(String name, Long sizeBytes, String modifiedAt, String digest) {
     }
 }
