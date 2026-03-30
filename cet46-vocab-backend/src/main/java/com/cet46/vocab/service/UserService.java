@@ -22,7 +22,11 @@ public interface UserService {
 
     LocalModelListResponse getLocalModels(Long userId);
 
+    LocalModelListResponse getCloudModels(Long userId);
+
     LlmLastUsedResponse getLastUsedLlm(Long userId);
 
     void changePassword(Long userId, ChangePasswordRequest req);
 }
+
+

@@ -1,4 +1,4 @@
-﻿<template>
+<template>
   <section class="profile-page">
     <section class="card">
       <h2>{{ TEXT.pageTitle }}</h2>
@@ -53,11 +53,26 @@
             <small>{{ item.desc }}</small>
           </button>
         </div>
-        <div class="current-model-line">
-          <span class="health-summary">{{ TEXT.currentModel }}{{ currentModelLabel }}</span>
-        </div>
-        <div class="current-model-line">
-          <span class="health-summary">{{ TEXT.lastUsedModel }}{{ lastUsedModelLabel }}</span>
+        <div class="model-overview">
+          <div class="model-card">
+            <div class="model-card-head">
+              <span class="model-card-title">{{ TEXT.currentModelCard }}</span>
+              <el-tag size="small" effect="plain">{{ currentProviderLabel }}</el-tag>
+            </div>
+            <div class="model-card-model">{{ currentModelLabel }}</div>
+          </div>
+          <div class="model-card">
+            <div class="model-card-head">
+              <span class="model-card-title">{{ TEXT.lastUsedModelCard }}</span>
+              <el-tag size="small" effect="plain">{{ lastUsedProviderLabel }}</el-tag>
+            </div>
+            <div class="model-card-model">{{ lastUsedModelLabel }}</div>
+            <div class="model-card-meta">{{ TEXT.requestScene }}{{ lastUsedSourceLabel }}</div>
+            <div class="model-card-meta">{{ TEXT.requestTime }}{{ lastUsedTimeLabel }}</div>
+            <div class="model-card-state" :class="{ mismatch: !lastUsedMatchesCurrent }">
+              {{ lastUsedMatchLabel }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -86,12 +101,36 @@
       </div>
 
       <div class="row">
+        <span class="label">{{ TEXT.cloudModel }}</span>
+        <div class="health-actions">
+          <el-select
+            v-model="form.llmCloudModel"
+            filterable
+            clearable
+            :placeholder="TEXT.cloudModelPlaceholder"
+            style="min-width: 320px"
+            :loading="cloudModelsLoading"
+            :disabled="cloudModelsLoading || cloudModels.length === 0"
+          >
+            <el-option
+              v-for="item in cloudModels"
+              :key="item.name"
+              :label="item.name"
+              :value="item.name"
+            />
+          </el-select>
+          <BtnSecondary class="health-btn" :loading="cloudModelsLoading" @click="loadCloudModels">{{ TEXT.refreshModels }}</BtnSecondary>
+          <span class="health-summary">{{ TEXT.availableCount }}{{ cloudModels.length }}</span>
+        </div>
+      </div>
+
+      <div class="row">
         <span class="label">{{ TEXT.localHealth }}</span>
         <div class="health-actions">
           <BtnSecondary class="health-btn" :loading="localHealthChecking" @click="checkLocalHealth">{{ TEXT.checkLocal }}</BtnSecondary>
           <span v-if="localHealthResult" class="health-summary">
             {{ localHealthResult.message }}
-            <template v-if="localHealthResult.latencyMs">（{{ localHealthResult.latencyMs }}ms）</template>
+            <template v-if="localHealthResult.latencyMs">({{ localHealthResult.latencyMs }}ms)</template>
           </span>
         </div>
       </div>
@@ -102,7 +141,7 @@
           <BtnSecondary class="health-btn" :loading="cloudHealthChecking" @click="checkCloudHealth">{{ TEXT.checkCloud }}</BtnSecondary>
           <span v-if="cloudHealthResult" class="health-summary">
             {{ cloudHealthResult.message }}
-            <template v-if="cloudHealthResult.latencyMs">（{{ cloudHealthResult.latencyMs }}ms）</template>
+            <template v-if="cloudHealthResult.latencyMs">({{ cloudHealthResult.latencyMs }}ms)</template>
           </span>
         </div>
       </div>
@@ -167,13 +206,24 @@ const TEXT = {
   provider: '\u6a21\u578b\u6765\u6e90',
   localModel: '\u672c\u5730\u6a21\u578b',
   localModelPlaceholder: '\u9009\u62e9\u672c\u5730\u6a21\u578b',
+  cloudModel: '\u4e91\u7aef\u6a21\u578b',
+  cloudModelPlaceholder: '\u9009\u62e9\u4e91\u7aef\u6a21\u578b',
   refreshModels: '\u5237\u65b0\u6a21\u578b\u5217\u8868',
   availableCount: '\u53ef\u7528\u6570\u91cf\uff1a',
-  currentModel: '\u5f53\u524d\u6a21\u578b\uff1a',
+  currentModelCard: '\u5f53\u524d\u914d\u7f6e\u6a21\u578b',
   cloudModelUnknown: '\u4e91\u7aef\u6a21\u578b\u672a\u914d\u7f6e',
-  lastUsedModel: '\u6700\u8fd1\u4e00\u6b21\u5b9e\u9645\u8bf7\u6c42\u6a21\u578b\uff1a',
+  lastUsedModelCard: '\u6700\u8fd1\u4e00\u6b21\u5b9e\u9645\u8bf7\u6c42',
   noLastUsedModel: '\u6682\u65e0\u8bb0\u5f55',
   noModel: '\u672a\u9009\u62e9',
+  requestScene: '\u8bf7\u6c42\u573a\u666f\uff1a',
+  requestTime: '\u8bf7\u6c42\u65f6\u95f4\uff1a',
+  sourceUnknown: '\u672a\u8bb0\u5f55',
+  timeUnknown: '\u6682\u65e0',
+  providerLocal: '\u672c\u5730\u6a21\u578b',
+  providerCloud: '\u4e91\u7aef API',
+  providerUnknown: '\u672a\u77e5\u63d0\u4f9b\u65b9',
+  modelMatched: '\u4e0e\u5f53\u524d\u914d\u7f6e\u4e00\u81f4',
+  modelMismatched: '\u4e0e\u5f53\u524d\u914d\u7f6e\u4e0d\u4e00\u81f4',
   localHealth: '\u672c\u5730\u8fde\u901a\u81ea\u68c0',
   checkLocal: '\u68c0\u6d4b\u672c\u5730\u6a21\u578b',
   cloudHealth: '\u4e91\u7aef\u8fde\u901a\u81ea\u68c0',
@@ -223,6 +273,8 @@ const cloudModelName = ref('')
 const lastUsed = ref(null)
 const localModelsLoading = ref(false)
 const localModels = ref([])
+const cloudModelsLoading = ref(false)
+const cloudModels = ref([])
 const avatarFile = ref(null)
 const avatarPreview = ref('')
 const objectUrl = ref('')
@@ -244,6 +296,7 @@ const form = reactive({
   llmStyle: 'story',
   llmProvider: 'local',
   llmLocalModel: '',
+  llmCloudModel: '',
   dailyTarget: 20
 })
 
@@ -257,10 +310,11 @@ const avatarText = computed(() => (form.nickname || form.username || userStore.n
 const isAdmin = computed(() => userStore.role === 'ADMIN')
 const currentModelLabel = computed(() => {
   if (form.llmProvider === 'cloud') {
-    return cloudModelName.value || cloudHealthResult.value?.model || TEXT.cloudModelUnknown
+    return form.llmCloudModel || cloudModelName.value || cloudHealthResult.value?.model || TEXT.cloudModelUnknown
   }
   return form.llmLocalModel || TEXT.noModel
 })
+const currentProviderLabel = computed(() => providerLabel(form.llmProvider))
 const lastUsedModelLabel = computed(() => {
   const data = lastUsed.value
   if (!data || !data.model) {
@@ -268,6 +322,22 @@ const lastUsedModelLabel = computed(() => {
   }
   return data.model
 })
+const lastUsedProviderLabel = computed(() => providerLabel(lastUsed.value?.provider))
+const lastUsedSourceLabel = computed(() => {
+  const source = String(lastUsed.value?.source || '').trim()
+  return source || TEXT.sourceUnknown
+})
+const lastUsedTimeLabel = computed(() => formatTimestamp(lastUsed.value?.updatedAt))
+const lastUsedMatchesCurrent = computed(() => {
+  const data = lastUsed.value
+  if (!data || !data.model) {
+    return true
+  }
+  const providerMatched = String(data.provider || '').trim() === String(form.llmProvider || '').trim()
+  const modelMatched = String(data.model || '').trim() === String(currentModelLabel.value || '').trim()
+  return providerMatched && modelMatched
+})
+const lastUsedMatchLabel = computed(() => (lastUsedMatchesCurrent.value ? TEXT.modelMatched : TEXT.modelMismatched))
 
 const syncFromStore = () => {
   form.username = userStore.username || ''
@@ -275,6 +345,7 @@ const syncFromStore = () => {
   form.llmStyle = userStore.llmStyle || 'story'
   form.llmProvider = userStore.llmProvider || 'local'
   form.llmLocalModel = userStore.llmLocalModel || ''
+  form.llmCloudModel = userStore.llmCloudModel || ''
   form.dailyTarget = userStore.dailyTarget || 20
 }
 
@@ -330,6 +401,23 @@ const loadLocalModels = async () => {
   }
 }
 
+
+const loadCloudModels = async () => {
+  cloudModelsLoading.value = true
+  try {
+    const res = await request.get('/user/llm/cloud-models', { timeout: 30000 })
+    const data = res?.data || {}
+    cloudModels.value = Array.isArray(data.models) ? data.models : []
+    if (!form.llmCloudModel && data.selectedModel) {
+      form.llmCloudModel = data.selectedModel
+    }
+    if (form.llmCloudModel && !cloudModels.value.some((item) => item?.name === form.llmCloudModel)) {
+      form.llmCloudModel = data.selectedModel || ''
+    }
+  } finally {
+    cloudModelsLoading.value = false
+  }
+}
 const saveAll = async () => {
   const nickname = form.nickname.trim()
   if (!nickname) {
@@ -349,6 +437,7 @@ const saveAll = async () => {
       llmStyle: form.llmStyle,
       llmProvider: form.llmProvider,
       llmLocalModel: form.llmLocalModel || null,
+      llmCloudModel: form.llmCloudModel || null,
       dailyTarget: form.dailyTarget
     }
     await request.put('/user/preference', preferencePayload)
@@ -356,6 +445,7 @@ const saveAll = async () => {
     await userStore.fetchUserInfo()
     syncFromStore()
     await loadLocalModels()
+    await loadCloudModels()
     await loadLastUsedModel()
     avatarFile.value = null
     avatarPreview.value = ''
@@ -423,10 +513,29 @@ const loadLastUsedModel = async () => {
   }
 }
 
+const providerLabel = (provider) => {
+  if (provider === 'cloud') return TEXT.providerCloud
+  if (provider === 'local') return TEXT.providerLocal
+  return TEXT.providerUnknown
+}
+
+const formatTimestamp = (timestamp) => {
+  const n = Number(timestamp)
+  if (!Number.isFinite(n) || n <= 0) {
+    return TEXT.timeUnknown
+  }
+  const d = new Date(n)
+  if (Number.isNaN(d.getTime())) {
+    return TEXT.timeUnknown
+  }
+  return d.toLocaleString()
+}
+
 onMounted(async () => {
   await userStore.fetchUserInfo()
   syncFromStore()
   await loadLocalModels()
+  await loadCloudModels()
   await loadLastUsedModel()
   try {
     const res = await request.get('/user/llm/cloud-health', { timeout: 30000 })
@@ -527,10 +636,6 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
-.current-model-line {
-  margin-top: 8px;
-}
-
 .health-btn {
   font-weight: 600;
 }
@@ -538,6 +643,57 @@ onUnmounted(() => {
 .health-summary {
   color: var(--color-muted-strong);
   font-size: 13px;
+}
+
+.model-overview {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.model-card {
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  background: var(--color-surface-soft);
+  padding: 10px 12px;
+}
+
+.model-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.model-card-title {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.model-card-model {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-primary-strong);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.model-card-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.model-card-state {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #2c7b55;
+}
+
+.model-card-state.mismatch {
+  color: #b4503d;
 }
 
 .security-panel {
@@ -571,7 +727,8 @@ onUnmounted(() => {
 
 @media (max-width: 900px) {
   .style-grid,
-  .provider-grid {
+  .provider-grid,
+  .model-overview {
     grid-template-columns: 1fr;
   }
 

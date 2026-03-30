@@ -12,8 +12,6 @@ public class AssistantChatRequest {
 
     @NotBlank(message = "question cannot be blank")
     private String question;
-    // quick | balanced | detailed
-    private String answerMode;
 
     @Valid
     private WordContext wordContext;

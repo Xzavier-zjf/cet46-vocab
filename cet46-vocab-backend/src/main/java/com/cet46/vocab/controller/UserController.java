@@ -96,6 +96,15 @@ public class UserController {
         return Result.success(userService.getLocalModels(userId));
     }
 
+    @GetMapping("/llm/cloud-models")
+    public Result<LocalModelListResponse> getCloudModels(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        Long userId = Long.valueOf(authentication.getPrincipal().toString());
+        return Result.success(userService.getCloudModels(userId));
+    }
+
     @GetMapping("/llm/last-used")
     public Result<LlmLastUsedResponse> getLastUsedLlm(Authentication authentication) {
         if (authentication == null || authentication.getPrincipal() == null) {
@@ -116,3 +125,4 @@ public class UserController {
         return Result.success();
     }
 }
+

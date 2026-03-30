@@ -6,6 +6,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @Component
@@ -16,6 +18,7 @@ public class CloudLlmProperties {
     private String baseUrl;
     private String path = "/v1/chat/completions";
     private String model;
+    private List<String> models = new ArrayList<>();
     private String apiKey;
     private Duration timeout = Duration.ofSeconds(60);
     private Integer maxRetries = 1;
@@ -35,6 +38,42 @@ public class CloudLlmProperties {
                 System.getenv("ALIYUN_DASHSCOPE_API_KEY")
         );
         return fallback == null ? null : fallback.trim();
+    }
+
+    public List<String> resolveModels() {
+        List<String> normalized = new ArrayList<>();
+        if (models != null) {
+            for (String item : models) {
+                if (StringUtils.hasText(item)) {
+                    normalized.add(item.trim());
+                }
+            }
+        }
+        if (normalized.isEmpty() && StringUtils.hasText(model)) {
+            normalized.add(model.trim());
+        }
+        return normalized;
+    }
+
+    public String resolveDefaultModel() {
+        if (StringUtils.hasText(model)) {
+            return model.trim();
+        }
+        List<String> normalized = resolveModels();
+        return normalized.isEmpty() ? null : normalized.get(0);
+    }
+
+    public boolean isSupportedModel(String targetModel) {
+        if (!StringUtils.hasText(targetModel)) {
+            return false;
+        }
+        String target = targetModel.trim();
+        for (String item : resolveModels()) {
+            if (target.equals(item)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String firstNonBlank(String... candidates) {

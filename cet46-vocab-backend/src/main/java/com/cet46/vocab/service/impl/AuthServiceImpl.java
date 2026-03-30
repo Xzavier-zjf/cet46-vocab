@@ -65,6 +65,7 @@ public class AuthServiceImpl implements AuthService {
                 .llmStyle(user.getLlmStyle())
                 .llmProvider(LlmProvider.normalize(user.getLlmProvider()))
                 .llmLocalModel(user.getLlmLocalModel())
+                .llmCloudModel(user.getLlmCloudModel())
                 .dailyTarget(user.getDailyTarget())
                 .totalDays(0)
                 .streakDays(0)
@@ -92,6 +93,7 @@ public class AuthServiceImpl implements AuthService {
         result.put("llmStyle", user.getLlmStyle());
         result.put("llmProvider", LlmProvider.normalize(user.getLlmProvider()));
         result.put("llmLocalModel", user.getLlmLocalModel());
+        result.put("llmCloudModel", user.getLlmCloudModel());
         return result;
     }
 
@@ -103,3 +105,5 @@ public class AuthServiceImpl implements AuthService {
         redisTemplate.delete("token:user:" + userId);
     }
 }
+
+

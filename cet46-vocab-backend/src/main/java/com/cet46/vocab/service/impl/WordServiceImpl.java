@@ -136,6 +136,7 @@ public class WordServiceImpl implements WordService {
         String style = getUserStyle(userId);
         String provider = getUserProvider(userId);
         String localModel = getUserLocalModel(userId);
+        String cloudModel = getUserCloudModel(userId);
         String cacheKey = buildWordDetailCacheKey(userId, style, wordType, wordId);
         Object cached = redisTemplate.opsForValue().get(cacheKey);
         if (cached != null) {
@@ -158,20 +159,20 @@ public class WordServiceImpl implements WordService {
         }
 
         WordMeta wordMeta = selectWordMetaSafely(wordId, wordType, style);
-        boolean cloudUnavailable = isCloudUnavailable(provider);
+        boolean cloudUnavailable = isCloudUnavailable(provider, cloudModel);
         if (cloudUnavailable) {
             wordMeta = normalizePendingWhenCloudUnavailable(wordMeta);
         }
         wordMeta = fixStuckPendingMeta(wordMeta);
         wordMeta = fixStuckPendingExplainMeta(wordMeta);
         wordMeta = fixInconsistentGeneratedStatus(wordMeta);
-        if (shouldTriggerGeneration(wordMeta, provider)) {
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.detail.generate");
-            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel);
+        if (shouldTriggerGeneration(wordMeta, provider, cloudModel)) {
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generate");
+            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel, cloudModel);
         }
-        if (shouldTriggerExplainGeneration(wordMeta, provider)) {
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.detail.generateExplain");
-            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel);
+        if (shouldTriggerExplainGeneration(wordMeta, provider, cloudModel)) {
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generateExplain");
+            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel);
         }
 
         String pos = wordMeta != null && StringUtils.hasText(wordMeta.getPos())
@@ -615,14 +616,17 @@ public class WordServiceImpl implements WordService {
         if (!StringUtils.hasText(explain)) {
             return fallbackGrammarUsage(pos);
         }
+        String[] prefixes = new String[]{"\u8bed\u6cd5\u7528\u6cd5\uff1a", "\u8bed\u6cd5\u7528\u6cd5:", "Grammar usage:", "Grammar usage\uff1a"};
         String[] lines = explain.split("\\R");
         for (String line : lines) {
             if (!StringUtils.hasText(line)) {
                 continue;
             }
             String trimmed = line.trim();
-            if (trimmed.startsWith("\u8bed\u6cd5\u7528\u6cd5\uff1a")) {
-                return trimmed.substring("\u8bed\u6cd5\u7528\u6cd5\uff1a".length()).trim();
+            for (String prefix : prefixes) {
+                if (trimmed.startsWith(prefix)) {
+                    return trimmed.substring(prefix.length()).trim();
+                }
             }
         }
         return fallbackGrammarUsage(pos);
@@ -646,7 +650,9 @@ public class WordServiceImpl implements WordService {
             return "\u901a\u5e38\u4fee\u9970\u52a8\u8bcd\u6216\u5f62\u5bb9\u8bcd\uff0c\u6ce8\u610f\u53e5\u4e2d\u4f4d\u7f6e\u3002";
         }
         return "\u5173\u6ce8\u8be5\u8bcd\u5728\u53e5\u4e2d\u6210\u5206\u4f4d\u7f6e\u4e0e\u56fa\u5b9a\u642d\u914d\u3002";
-    }    private List<WordDetailResponse.SynonymItem> parseSynonyms(String synonymsJson) {
+    }
+
+    private List<WordDetailResponse.SynonymItem> parseSynonyms(String synonymsJson) {
         if (!StringUtils.hasText(synonymsJson)) {
             return Collections.emptyList();
         }
@@ -753,9 +759,20 @@ public class WordServiceImpl implements WordService {
         }
         return user.getLlmLocalModel().trim();
     }
-    private String resolveUsedModel(String provider, String localModel) {
+
+    private String getUserCloudModel(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return cloudLlmProperties.resolveDefaultModel();
+        }
+        if (StringUtils.hasText(user.getLlmCloudModel())) {
+            return user.getLlmCloudModel().trim();
+        }
+        return cloudLlmProperties.resolveDefaultModel();
+    }
+    private String resolveUsedModel(String provider, String localModel, String cloudModel) {
         if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
-            return cloudLlmProperties.getModel();
+            return cloudModel;
         }
         if (StringUtils.hasText(localModel)) {
             return localModel.trim();
@@ -808,8 +825,8 @@ public class WordServiceImpl implements WordService {
         }
     }
 
-    private boolean shouldTriggerGeneration(WordMeta wordMeta, String provider) {
-        if (isCloudUnavailable(provider)) {
+    private boolean shouldTriggerGeneration(WordMeta wordMeta, String provider, String cloudModel) {
+        if (isCloudUnavailable(provider, cloudModel)) {
             return false;
         }
         if (wordMeta == null || !StringUtils.hasText(wordMeta.getGenStatus())) {
@@ -915,8 +932,8 @@ public class WordServiceImpl implements WordService {
         return !(sentenceOk && synonymOk && mnemonicOk);
     }
 
-    private boolean shouldTriggerExplainGeneration(WordMeta wordMeta, String provider) {
-        if (isCloudUnavailable(provider)) {
+    private boolean shouldTriggerExplainGeneration(WordMeta wordMeta, String provider, String cloudModel) {
+        if (isCloudUnavailable(provider, cloudModel)) {
             return false;
         }
         if (wordMeta == null) {
@@ -978,13 +995,13 @@ public class WordServiceImpl implements WordService {
         return "full".equalsIgnoreCase(status);
     }
 
-    private boolean isCloudUnavailable(String provider) {
+    private boolean isCloudUnavailable(String provider, String cloudModel) {
         if (!LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
             return false;
         }
         return !Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
                 || !StringUtils.hasText(cloudLlmProperties.getBaseUrl())
-                || !StringUtils.hasText(cloudLlmProperties.getModel())
+                || !StringUtils.hasText(cloudModel)
                 || !StringUtils.hasText(cloudLlmProperties.getApiKey());
     }
     private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
@@ -1025,6 +1042,11 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
+
+
+
 
 
 

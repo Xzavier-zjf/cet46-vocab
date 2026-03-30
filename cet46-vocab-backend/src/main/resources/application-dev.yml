@@ -21,7 +21,7 @@ mybatis-plus:
 llm:
   ollama:
     base-url: http://localhost:11434
-    model: qwen3.5:4b-q4_K_M
+    model: qwen3.5:0.8b
     timeout: 120s
     max-retries: 0
     think: false
@@ -30,7 +30,14 @@ llm:
     enabled: true
     base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
     path: /chat/completions
-    model: qwen-plus
+    model: qwen3.5-122b-a10b
+    models:
+      - qwen3.5-122b-a10b
+      - qwen3.5-flash
+      - qwen3.5-35b-a3
+      - qwen3.5-27b
+      - MiniMax-M2.5
+      - gui-plus-2026-02-26
     api-key: ${LLM_CLOUD_API_KEY:${DASHSCOPE_API_KEY:${ALIYUN_DASHSCOPE_API_KEY:}}}
     timeout: 90s
     max-retries: 1

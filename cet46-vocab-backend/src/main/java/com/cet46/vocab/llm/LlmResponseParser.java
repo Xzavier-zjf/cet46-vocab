@@ -82,11 +82,24 @@ public class LlmResponseParser {
             }
             List<SynonymItem> items = new ArrayList<>();
             for (JsonNode item : arrayNode) {
+                if (item == null || item.isNull()) {
+                    continue;
+                }
+                if (item.isTextual()) {
+                    String synonymText = item.asText();
+                    if (StringUtils.hasText(synonymText) && !"null".equalsIgnoreCase(synonymText.trim())) {
+                        items.add(new SynonymItem(synonymText.trim(), null, null));
+                    }
+                    continue;
+                }
+                if (!item.isObject()) {
+                    continue;
+                }
                 String synonym = getText(item, "synonym", "word", "term");
                 String difference = getText(item, "difference", "usage", "note", "explanation");
                 String example = getText(item, "example", "sentence", "example_sentence");
-                if (synonym != null || difference != null || example != null) {
-                    items.add(new SynonymItem(synonym, difference, example));
+                if (StringUtils.hasText(synonym)) {
+                    items.add(new SynonymItem(synonym.trim(), difference, example));
                 }
             }
             if (items.isEmpty()) {
@@ -265,3 +278,5 @@ public class LlmResponseParser {
     public record MnemonicResult(String mnemonic, String rootAnalysis) {
     }
 }
+
+

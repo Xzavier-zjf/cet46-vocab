@@ -57,18 +57,31 @@ public class CloudLlmClient {
     }
 
     public String generate(String prompt) {
-        return generate(prompt, cloudLlmProperties.getMaxTokens());
+        return generate(prompt, null, cloudLlmProperties.getMaxTokens());
     }
 
     public String generate(String prompt, Integer maxTokens) {
-        return generateWithMeta(prompt, maxTokens).content();
+        return generate(prompt, null, maxTokens);
+    }
+
+    public String generate(String prompt, String modelOverride) {
+        return generate(prompt, modelOverride, cloudLlmProperties.getMaxTokens());
+    }
+
+    public String generate(String prompt, String modelOverride, Integer maxTokens) {
+        return generateWithMeta(prompt, modelOverride, maxTokens).content();
     }
 
     public GenerationResult generateWithMeta(String prompt, Integer maxTokens) {
+        return generateWithMeta(prompt, null, maxTokens);
+    }
+
+    public GenerationResult generateWithMeta(String prompt, String modelOverride, Integer maxTokens) {
+        String requestModel = resolveRequestModel(modelOverride);
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
             throw new OllamaClient.LlmCallException("cloud llm is disabled");
         }
-        if (!StringUtils.hasText(cloudLlmProperties.getBaseUrl()) || !StringUtils.hasText(cloudLlmProperties.getModel())) {
+        if (!StringUtils.hasText(cloudLlmProperties.getBaseUrl()) || !StringUtils.hasText(requestModel)) {
             throw new OllamaClient.LlmCallException("cloud llm base-url/model is not configured");
         }
         if (!StringUtils.hasText(cloudLlmProperties.getApiKey())) {
@@ -76,13 +89,13 @@ public class CloudLlmClient {
         }
 
         String url = joinUrl(cloudLlmProperties.getBaseUrl(), cloudLlmProperties.getPath());
-        log.info("cloud llm request url={}, model={}", url, cloudLlmProperties.getModel());
+        log.info("cloud llm request url={}, model={}", url, requestModel);
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(cloudLlmProperties.getApiKey().trim());
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", cloudLlmProperties.getModel());
+        requestBody.put("model", requestModel);
         requestBody.put("temperature", cloudLlmProperties.getTemperature());
         if (maxTokens != null && maxTokens > 0) {
             requestBody.put("max_tokens", maxTokens);
@@ -100,9 +113,9 @@ public class CloudLlmClient {
                 if (!StringUtils.hasText(content)) {
                     throw new OllamaClient.LlmCallException("cloud llm response content is empty");
                 }
-                boolean truncated = isLengthTruncated(body);
+                boolean truncated = isLengthTruncated(body, maxTokens);
                 log.info("cloud llm response model={}, chars={}, preview={}",
-                        cloudLlmProperties.getModel(),
+                        requestModel,
                         content.length(),
                         preview(content));
                 return new GenerationResult(content, truncated);
@@ -113,11 +126,14 @@ public class CloudLlmClient {
 
         throw new OllamaClient.LlmCallException("cloud llm call failed", lastException);
     }
-
     public CloudLlmHealthResponse healthCheck() {
+        return healthCheck(null);
+    }
+
+    public CloudLlmHealthResponse healthCheck(String modelOverride) {
         List<String> details = new ArrayList<>();
         String baseUrl = cloudLlmProperties.getBaseUrl();
-        String model = cloudLlmProperties.getModel();
+        String model = resolveRequestModel(modelOverride);
         boolean configured = Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
                 && StringUtils.hasText(baseUrl)
                 && StringUtils.hasText(model)
@@ -156,17 +172,17 @@ public class CloudLlmClient {
         boolean modelOk = false;
         Long latencyMs = null;
         if (configured && dnsOk) {
-            long start = System.currentTimeMillis();
+            long startMs = System.currentTimeMillis();
             try {
-                String content = callHealthProbe();
-                latencyMs = System.currentTimeMillis() - start;
+                String content = callHealthProbe(model);
+                latencyMs = System.currentTimeMillis() - startMs;
                 authOk = true;
                 modelOk = StringUtils.hasText(content);
                 if (!modelOk) {
                     details.add("\u9274\u6743\u901A\u8FC7\uFF0C\u4F46\u6A21\u578B\u8FD4\u56DE\u7A7A\u5185\u5BB9");
                 }
             } catch (HttpStatusCodeException ex) {
-                latencyMs = System.currentTimeMillis() - start;
+                latencyMs = System.currentTimeMillis() - startMs;
                 HttpStatusCode code = ex.getStatusCode();
                 int status = code.value();
                 if (status == 401 || status == 403) {
@@ -180,10 +196,10 @@ public class CloudLlmClient {
                     }
                 }
             } catch (ResourceAccessException ex) {
-                latencyMs = System.currentTimeMillis() - start;
+                latencyMs = System.currentTimeMillis() - startMs;
                 details.add("\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25: " + ex.getMessage());
             } catch (Exception ex) {
-                latencyMs = System.currentTimeMillis() - start;
+                latencyMs = System.currentTimeMillis() - startMs;
                 details.add("\u8C03\u7528\u5F02\u5E38: " + ex.getMessage());
             }
         }
@@ -215,14 +231,14 @@ public class CloudLlmClient {
                 .build();
     }
 
-    private String callHealthProbe() {
+    private String callHealthProbe(String model) {
         String url = joinUrl(cloudLlmProperties.getBaseUrl(), cloudLlmProperties.getPath());
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(cloudLlmProperties.getApiKey().trim());
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", cloudLlmProperties.getModel());
+        requestBody.put("model", model);
         requestBody.put("temperature", 0);
         requestBody.put("messages", List.of(Map.of("role", "user", "content", "Reply with OK")));
 
@@ -230,7 +246,12 @@ public class CloudLlmClient {
         ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
         return extractContent(response.getBody());
     }
-
+    private String resolveRequestModel(String modelOverride) {
+        if (StringUtils.hasText(modelOverride)) {
+            return modelOverride.trim();
+        }
+        return cloudLlmProperties.resolveDefaultModel();
+    }
     private String joinUrl(String baseUrl, String path) {
         String base = baseUrl.trim();
         String suffix = StringUtils.hasText(path) ? path.trim() : "/v1/chat/completions";
@@ -267,24 +288,37 @@ public class CloudLlmClient {
         return content == null ? null : String.valueOf(content);
     }
 
-    private boolean isLengthTruncated(Map<?, ?> body) {
+    private boolean isLengthTruncated(Map<?, ?> body, Integer requestMaxTokens) {
         if (body == null) {
             return false;
         }
         Object choices = body.get("choices");
-        if (!(choices instanceof List<?> choiceList) || choiceList.isEmpty()) {
+        if (choices instanceof List<?> choiceList && !choiceList.isEmpty()) {
+            Object firstChoice = choiceList.get(0);
+            if (firstChoice instanceof Map<?, ?> firstChoiceMap) {
+                Object finishReason = firstChoiceMap.get("finish_reason");
+                if (finishReason != null) {
+                    String value = String.valueOf(finishReason).trim().toLowerCase();
+                    if ("length".equals(value) || "max_tokens".equals(value)) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        if (requestMaxTokens == null || requestMaxTokens <= 0) {
             return false;
         }
-        Object firstChoice = choiceList.get(0);
-        if (!(firstChoice instanceof Map<?, ?> firstChoiceMap)) {
+        Object usageObj = body.get("usage");
+        if (!(usageObj instanceof Map<?, ?> usageMap)) {
             return false;
         }
-        Object finishReason = firstChoiceMap.get("finish_reason");
-        if (finishReason == null) {
+        Object completionTokensObj = usageMap.get("completion_tokens");
+        if (!(completionTokensObj instanceof Number completionTokens)) {
             return false;
         }
-        String value = String.valueOf(finishReason).trim().toLowerCase();
-        return "length".equals(value) || "max_tokens".equals(value);
+        // Some gateways may not return finish_reason=length consistently.
+        return completionTokens.intValue() >= Math.max(1, requestMaxTokens - 8);
     }
 
     private String preview(String text) {
@@ -298,3 +332,6 @@ public class CloudLlmClient {
     public record GenerationResult(String content, boolean truncated) {
     }
 }
+
+
+

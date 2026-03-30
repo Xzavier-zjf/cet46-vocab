@@ -134,7 +134,7 @@ public class OllamaClient {
                 if (!StringUtils.hasText(content)) {
                     throw new LlmCallException("ollama response content is blank");
                 }
-                return new GenerationResult(content, isLengthTruncated(body));
+                return new GenerationResult(content, isLengthTruncated(body, adjustedNumPredict));
             } catch (RuntimeException ex) {
                 lastException = ex;
             }
@@ -143,13 +143,24 @@ public class OllamaClient {
         throw new LlmCallException("ollama call failed", lastException);
     }
 
-    private boolean isLengthTruncated(Map<?, ?> body) {
+    private boolean isLengthTruncated(Map<?, ?> body, Integer requestNumPredict) {
         Object doneReason = body.get("done_reason");
-        if (doneReason == null) {
+        if (doneReason != null) {
+            String value = String.valueOf(doneReason).trim().toLowerCase(Locale.ROOT);
+            if ("length".equals(value) || "max_tokens".equals(value)) {
+                return true;
+            }
+        }
+
+        if (requestNumPredict == null || requestNumPredict <= 0) {
             return false;
         }
-        String value = String.valueOf(doneReason).trim().toLowerCase(Locale.ROOT);
-        return "length".equals(value) || "max_tokens".equals(value);
+        Object evalCountObj = body.get("eval_count");
+        if (!(evalCountObj instanceof Number evalCount)) {
+            return false;
+        }
+        // Some runtimes may not always set done_reason=length when reaching token cap.
+        return evalCount.intValue() >= Math.max(1, requestNumPredict - 6);
     }
 
     public CloudLlmHealthResponse healthCheck() {
@@ -287,13 +298,13 @@ public class OllamaClient {
         int safeRequested = Math.max(64, requested);
         double sizeB = extractModelSizeB(modelName);
         if (sizeB > 0 && sizeB <= 1.0d) {
-            return Math.min(safeRequested, 96);
+            return Math.min(safeRequested, 320);
         }
         if (sizeB > 1.0d && sizeB <= 2.0d) {
-            return Math.min(safeRequested, 140);
+            return Math.min(safeRequested, 640);
         }
         if (sizeB > 2.0d && sizeB <= 4.0d) {
-            return Math.min(safeRequested, 220);
+            return Math.min(safeRequested, 900);
         }
         return safeRequested;
     }

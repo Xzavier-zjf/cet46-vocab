@@ -7,14 +7,7 @@
           <p>我是你的四六级备考助手。可问单词、语法、例句、易混词和备考策略。</p>
         </div>
         <div class="intro-actions">
-          <el-switch
-            v-model="autoAskEnabled"
-            size="small"
-            inline-prompt
-            active-text="自动首问"
-            inactive-text="手动提问"
-            @change="persistAutoAskSetting"
-          />
+          <BtnSecondary :disabled="loading" @click="clearCurrentSession">重置当前会话</BtnSecondary>
           <BtnSecondary @click="openHistory">历史对话</BtnSecondary>
           <BtnPrimary @click="createNewSession(true)">新建对话</BtnPrimary>
         </div>
@@ -135,16 +128,7 @@
           @keydown="handleComposerKeydown"
         />
         <div class="actions">
-          <div class="actions-left">
-            <span class="mode-label">回答长度</span>
-            <el-select v-model="answerMode" size="small" style="width: 132px">
-              <el-option label="快速" value="quick" />
-              <el-option label="平衡" value="balanced" />
-              <el-option label="详细" value="detailed" />
-            </el-select>
-          </div>
           <div class="actions-right">
-            <BtnSecondary :disabled="loading" @click="clearCurrentSession">清空当前对话</BtnSecondary>
             <el-button
               v-if="loading"
               type="warning"
@@ -190,7 +174,18 @@
             :value="group.id"
           />
         </el-select>
-        <BtnSecondary size="small" @click="openCreateGroupDialog">新建分组</BtnSecondary>
+        <div class="group-actions">
+          <el-dropdown trigger="click" :teleported="false" @command="handleGroupManageCommand">
+            <el-button size="small">分组管理</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="create">新建分组</el-dropdown-item>
+                <el-dropdown-item command="edit" :disabled="groups.length === 0">编辑分组</el-dropdown-item>
+                <el-dropdown-item command="delete" :disabled="groups.length === 0">删除分组</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
       </div>
 
       <div class="history-tools">
@@ -245,6 +240,7 @@
                   </el-dropdown>
                 </div>
                 <el-dropdown-item command="group">进入分组</el-dropdown-item>
+                <el-dropdown-item command="remove_group">删除分组</el-dropdown-item>
                 <el-dropdown-item divided command="delete">删除</el-dropdown-item>
               </el-dropdown-menu>
             </template>
@@ -279,6 +275,97 @@
         <BtnPrimary @click="confirmGroupAssign">确定</BtnPrimary>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="groupDeleteDialogVisible" title="删除分组" width="420px">
+      <el-select
+        v-model="groupDeleteTargetId"
+        placeholder="请选择要删除的分组"
+        style="width: 100%"
+        clearable
+      >
+        <el-option
+          v-for="group in groups"
+          :key="group.id"
+          :label="group.name"
+          :value="group.id"
+        />
+      </el-select>
+      <template #footer>
+        <BtnSecondary @click="groupDeleteDialogVisible = false">取消</BtnSecondary>
+        <el-button type="danger" @click="confirmDeleteGroup">删除分组</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="groupEditDialogVisible" title="编辑分组" width="560px">
+      <div class="group-edit-block">
+        <el-select
+          v-model="groupEditTargetId"
+          placeholder="请选择要编辑的分组"
+          style="width: 100%"
+          clearable
+          @change="onGroupEditTargetChange"
+        >
+          <el-option
+            v-for="group in groups"
+            :key="group.id"
+            :label="group.name"
+            :value="group.id"
+          />
+        </el-select>
+      </div>
+      <div v-if="groupEditTargetId" class="group-edit-block">
+        <div class="group-edit-title">重命名分组</div>
+        <div class="group-edit-rename-row">
+          <el-input v-model="groupEditName" maxlength="20" placeholder="请输入新的分组名称" />
+          <BtnPrimary @click="confirmRenameGroup">保存名称</BtnPrimary>
+        </div>
+      </div>
+      <div v-if="groupEditTargetId" class="group-edit-block">
+        <div class="group-edit-title">会话分组管理</div>
+        <div class="group-edit-batch-row">
+          <el-select
+            v-model="groupBulkTargetId"
+            size="small"
+            style="width: 200px"
+            placeholder="批量转移到"
+            clearable
+          >
+            <el-option label="未分组" value="" />
+            <el-option
+              v-for="group in groups"
+              :key="group.id"
+              :label="group.name"
+              :value="group.id"
+              :disabled="group.id === groupEditTargetId"
+            />
+          </el-select>
+          <el-button size="small" type="primary" plain @click="bulkReassignGroupSessions">批量转移该分组全部会话</el-button>
+        </div>
+        <div v-if="groupEditSessions.length === 0" class="group-edit-empty">该分组下暂无会话</div>
+        <div v-else class="group-edit-list">
+          <div v-for="session in groupEditSessions" :key="session.id" class="group-edit-item">
+            <span class="group-edit-session-title">{{ session.title || '未命名会话' }}</span>
+            <el-select
+              size="small"
+              :model-value="session.groupId || ''"
+              style="width: 170px"
+              @change="(value) => reassignSessionGroup(session.id, value)"
+            >
+              <el-option label="未分组" value="" />
+              <el-option
+                v-for="group in groups"
+                :key="group.id"
+                :label="group.name"
+                :value="group.id"
+              />
+            </el-select>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <BtnSecondary @click="groupEditDialogVisible = false">关闭</BtnSecondary>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -296,7 +383,6 @@ const router = useRouter()
 
 const STORAGE_KEY = 'assistant:sessions:v3'
 const LEGACY_STORAGE_KEY = 'assistant:sessions:v2'
-const AUTO_ASK_KEY = 'assistant:auto-ask:v1'
 const ACTIVE_SESSION_KEY = 'assistant:active-session:v1'
 const loading = ref(false)
 const regeneratingMessageId = ref('')
@@ -310,8 +396,6 @@ let abortReason = ''
 let pendingSessionId = ''
 let pendingUserMessageId = null
 const question = ref('')
-const autoAskEnabled = ref(loadAutoAskSetting())
-const answerMode = ref('balanced')
 const historyVisible = ref(false)
 const selectedIds = ref([])
 const historyKeyword = ref('')
@@ -326,6 +410,12 @@ const groupDialogVisible = ref(false)
 const groupSessionId = ref('')
 const groupTargetId = ref('')
 const newGroupName = ref('')
+const groupDeleteDialogVisible = ref(false)
+const groupDeleteTargetId = ref('')
+const groupEditDialogVisible = ref(false)
+const groupEditTargetId = ref('')
+const groupEditName = ref('')
+const groupBulkTargetId = ref('')
 
 const state = loadState()
 const sessions = ref(state.sessions)
@@ -392,6 +482,11 @@ const allSelected = computed(() => {
   if (ids.length === 0) return false
   return ids.every((id) => selectedIds.value.includes(id))
 })
+const groupEditSessions = computed(() => {
+  const targetId = groupEditTargetId.value
+  if (!targetId) return []
+  return sessions.value.filter((s) => s?.groupId === targetId)
+})
 
 const quickQuestions = computed(() => {
   if (activeContext.value.word) {
@@ -412,7 +507,7 @@ initSession()
 function initSession() {
   const hasRouteWord = !!routeWordContext.value.word && !!routeWordContext.value.wordId
   if (hasRouteWord) {
-    createNewSession(false, { tryAutoAsk: true })
+    createNewSession(false)
     return
   }
   if (sessions.value.length === 0) {
@@ -441,14 +536,14 @@ function sortForDefaultActivate(list) {
   })
 }
 
-function createNewSession(forceGlobal, options = {}) {
+function createNewSession(forceGlobal) {
   const now = Date.now()
   sessions.value = sessions.value.filter((s) => s && (s.hasInteraction || s.id === activeSessionId.value))
   const context = forceGlobal ? {} : { ...routeWordContext.value }
   const title = context.word ? `单词：${context.word}` : `会话 ${new Date(now).toLocaleString()}`
   const greeting = '你好，我是你的四六级学习助手。'
   const session = {
-    id: String(now),
+    id: buildSessionId(),
     title,
     updatedAt: now,
     hasInteraction: false,
@@ -460,9 +555,6 @@ function createNewSession(forceGlobal, options = {}) {
   sessions.value.unshift(session)
   activeSessionId.value = session.id
   persistState()
-  if (options.tryAutoAsk && autoAskEnabled.value && context.word) {
-    send(`${context.word}怎么记更快？`, session.id)
-  }
 }
 
 function openHistory() {
@@ -476,6 +568,7 @@ function openHistory() {
 function enterSession(sessionId) {
   activeSessionId.value = sessionId
   historyVisible.value = false
+  persistState()
 }
 
 function toggleSelect(sessionId) {
@@ -538,7 +631,7 @@ function clearCurrentSession() {
     {
       id: now,
       role: 'assistant',
-      content: contextWord ? `已清空对话。继续围绕 ${contextWord} 提问即可。` : '已清空当前对话。你可以继续提问。'
+      content: contextWord ? `已重置会话。继续围绕 ${contextWord} 提问即可。` : '已重置当前会话。你可以继续提问。'
     }
   ]
   sessions.value[idx].updatedAt = now
@@ -596,7 +689,6 @@ async function send(contentOverride = '', targetSessionId = '') {
   try {
     const res = await assistantChat({
       question: content,
-      answerMode: answerMode.value,
       wordContext: activeContext.value?.word ? activeContext.value : null,
       history: buildHistory()
     }, {
@@ -702,12 +794,12 @@ function isLatestUserMessage(msg) {
   return msg?.role === 'user' && msg?.id === latestUserMessageId.value
 }
 
-async function copyMessageContent(content) {
+async function copyMessageContent(content, successText = '已复制') {
   const text = String(content || '')
   if (!text) return
   try {
     await navigator.clipboard.writeText(text)
-    ElMessage.success('已复制')
+    ElMessage.success(successText)
   } catch {
     const area = document.createElement('textarea')
     area.value = text
@@ -717,7 +809,7 @@ async function copyMessageContent(content) {
     area.select()
     document.execCommand('copy')
     document.body.removeChild(area)
-    ElMessage.success('已复制')
+    ElMessage.success(successText)
   }
 }
 
@@ -789,7 +881,6 @@ function setAssistantFeedback(messageId, feedback) {
   const target = session.messages.find((m) => m.id === messageId && m.role === 'assistant')
   if (!target) return
   target.feedback = target.feedback === feedback ? '' : feedback
-  session.updatedAt = Date.now()
   persistState()
 }
 
@@ -823,7 +914,6 @@ async function regenerateAssistantMessage(messageId) {
   try {
     const res = await assistantChat({
       question: userQuestion,
-      answerMode: answerMode.value,
       wordContext: activeContext.value?.word ? activeContext.value : null,
       history
     })
@@ -935,7 +1025,6 @@ function handleMoreCommand(command, session) {
   if (!session) return
   if (command === 'pin') {
     session.pinned = true
-    session.updatedAt = Date.now()
     persistState()
     return
   }
@@ -969,8 +1058,32 @@ function handleMoreCommand(command, session) {
     groupDialogVisible.value = true
     return
   }
+  if (command === 'remove_group') {
+    if (!session.groupId) {
+      ElMessage.info('该对话当前未分组')
+      return
+    }
+    session.groupId = null
+    persistState()
+    ElMessage.success('已删除该对话分组，对话内容保留')
+    return
+  }
   if (command === 'delete') {
     deleteSession(session.id)
+  }
+}
+
+function handleGroupManageCommand(command) {
+  if (command === 'create') {
+    openCreateGroupDialog()
+    return
+  }
+  if (command === 'edit') {
+    openEditGroupDialog()
+    return
+  }
+  if (command === 'delete') {
+    openDeleteGroupDialog()
   }
 }
 
@@ -990,28 +1103,19 @@ function confirmRename() {
   persistState()
 }
 
-function copySession(session) {
-  const now = Date.now()
-  const copied = {
-    ...session,
-    id: String(now),
-    title: `${session.title || '会话'} - 副本`,
-    updatedAt: Number(session.updatedAt || now),
-    hasInteraction: true,
-    messages: (session.messages || []).map((m, i) => ({
-      ...m,
-      id: now + i + 1
-    }))
-  }
-  const sourceIdx = sessions.value.findIndex((s) => s.id === session.id)
-  if (sourceIdx >= 0) {
-    sessions.value.splice(sourceIdx + 1, 0, copied)
-  } else {
-    sessions.value.push(copied)
-  }
-  activeSessionId.value = copied.id
-  persistState()
-  ElMessage.success('已复制会话')
+async function copySession(session) {
+  if (!session) return
+  const lines = []
+  lines.push(`会话标题: ${session.title || ''}`)
+  lines.push(`更新时间: ${formatDateTime(session.updatedAt)}`)
+  lines.push(`分组: ${groupNameById(session.groupId) || '未分组'}`)
+  lines.push('')
+  ;(session.messages || []).forEach((m) => {
+    const role = m.role === 'assistant' ? 'AI' : '用户'
+    lines.push(`${role}: ${m.content || ''}`)
+    lines.push('')
+  })
+  await copyMessageContent(lines.join('\n'), '已复制会话全部内容')
 }
 
 function exportSessionAsJson(session) {
@@ -1059,18 +1163,13 @@ function openCreateGroupDialog() {
   }).then(({ value }) => {
     const name = String(value || '').trim()
     if (!name) return
-    const existing = groups.value.find((g) => g.name.toLowerCase() === name.toLowerCase())
-    if (existing) {
-      ElMessage.warning('分组已存在')
+    const created = ensureGroup(name)
+    assignGroupToSession(activeSessionId.value, created.group.id)
+    if (created.created) {
+      ElMessage.success('分组已创建，并已自动分配到当前会话')
       return
     }
-    groups.value.unshift({
-      id: `g_${Date.now()}`,
-      name,
-      createdAt: Date.now()
-    })
-    persistState()
-    ElMessage.success('分组已创建')
+    ElMessage.success('已选择现有分组，并已自动分配到当前会话')
   }).catch(() => {})
 }
 
@@ -1080,22 +1179,24 @@ function createGroupInDialog() {
     ElMessage.warning('请输入分组名称')
     return
   }
-  const existing = groups.value.find((g) => g.name.toLowerCase() === name.toLowerCase())
-  if (existing) {
-    groupTargetId.value = existing.id
-    ElMessage.success('已选择现有分组')
+  const created = ensureGroup(name)
+  const assigned = assignGroupToSession(groupSessionId.value, created.group.id)
+  groupTargetId.value = created.group.id
+  newGroupName.value = ''
+  if (!assigned) {
+    if (created.created) {
+      ElMessage.success('已创建分组')
+    } else {
+      ElMessage.success('已选择现有分组')
+    }
     return
   }
-  const group = {
-    id: `g_${Date.now()}`,
-    name,
-    createdAt: Date.now()
+  groupDialogVisible.value = false
+  if (created.created) {
+    ElMessage.success('分组已创建，并已自动分配到当前会话')
+  } else {
+    ElMessage.success('已选择现有分组，并已自动分配到当前会话')
   }
-  groups.value.unshift(group)
-  groupTargetId.value = group.id
-  newGroupName.value = ''
-  persistState()
-  ElMessage.success('已创建分组')
 }
 
 function confirmGroupAssign() {
@@ -1111,10 +1212,172 @@ function confirmGroupAssign() {
   ElMessage.success('分组已更新')
 }
 
+function assignGroupToSession(sessionId, groupId) {
+  if (!sessionId) return false
+  const session = sessions.value.find((s) => s.id === sessionId)
+  if (!session) return false
+  session.groupId = groupId || null
+  persistState()
+  return true
+}
+
+function openDeleteGroupDialog() {
+  if (!groups.value.length) {
+    ElMessage.info('暂无可删除分组')
+    return
+  }
+  groupDeleteTargetId.value = ''
+  groupDeleteDialogVisible.value = true
+}
+
+function confirmDeleteGroup() {
+  const targetId = groupDeleteTargetId.value
+  if (!targetId) {
+    ElMessage.warning('请选择要删除的分组')
+    return
+  }
+  groups.value = groups.value.filter((g) => g.id !== targetId)
+  sessions.value.forEach((s) => {
+    if (s?.groupId === targetId) {
+      s.groupId = null
+    }
+  })
+  if (historyGroupFilter.value === targetId) {
+    historyGroupFilter.value = 'all'
+  }
+  groupDeleteDialogVisible.value = false
+  groupDeleteTargetId.value = ''
+  persistState()
+  ElMessage.success('分组已删除，原分组会话已转为未分组')
+}
+
+function openEditGroupDialog() {
+  if (!groups.value.length) {
+    ElMessage.info('暂无可编辑分组')
+    return
+  }
+  const initial = groupEditTargetId.value && groups.value.some((g) => g.id === groupEditTargetId.value)
+    ? groupEditTargetId.value
+    : groups.value[0].id
+  groupEditTargetId.value = initial
+  onGroupEditTargetChange(initial)
+  groupEditDialogVisible.value = true
+}
+
+function onGroupEditTargetChange(groupId) {
+  const group = groups.value.find((g) => g.id === groupId)
+  groupEditName.value = group?.name || ''
+  groupBulkTargetId.value = ''
+}
+
+function confirmRenameGroup() {
+  const targetId = groupEditTargetId.value
+  if (!targetId) {
+    ElMessage.warning('请先选择分组')
+    return
+  }
+  const nextName = String(groupEditName.value || '').trim()
+  if (!nextName) {
+    ElMessage.warning('分组名称不能为空')
+    return
+  }
+  const duplicated = groups.value.some((g) => g.id !== targetId && normalizeGroupName(g?.name) === normalizeGroupName(nextName))
+  if (duplicated) {
+    ElMessage.warning('分组名称已存在')
+    return
+  }
+  const group = groups.value.find((g) => g.id === targetId)
+  if (!group) {
+    ElMessage.warning('分组不存在或已删除')
+    return
+  }
+  group.name = nextName
+  persistState()
+  ElMessage.success('分组名称已更新')
+}
+
+function reassignSessionGroup(sessionId, targetGroupId) {
+  const session = sessions.value.find((s) => s?.id === sessionId)
+  if (!session) return
+  const normalized = targetGroupId || null
+  if (session.groupId === normalized) return
+  session.groupId = normalized
+  persistState()
+  ElMessage.success(normalized ? '会话分组已调整' : '会话已移至未分组')
+}
+
+function bulkReassignGroupSessions() {
+  const sourceGroupId = groupEditTargetId.value
+  if (!sourceGroupId) {
+    ElMessage.warning('请先选择分组')
+    return
+  }
+  const targetGroupId = groupBulkTargetId.value || null
+  if (targetGroupId === sourceGroupId) {
+    ElMessage.warning('目标分组不能与当前分组相同')
+    return
+  }
+  const affected = sessions.value.filter((s) => s?.groupId === sourceGroupId)
+  if (!affected.length) {
+    ElMessage.info('该分组下暂无会话')
+    return
+  }
+  affected.forEach((s) => {
+    s.groupId = targetGroupId
+  })
+  if (historyGroupFilter.value === sourceGroupId) {
+    historyGroupFilter.value = targetGroupId || 'none'
+  }
+  persistState()
+  ElMessage.success(targetGroupId ? `已批量转移 ${affected.length} 条会话` : `已将 ${affected.length} 条会话移至未分组`)
+}
+
 function groupNameById(groupId) {
   if (!groupId) return ''
   const group = groups.value.find((g) => g.id === groupId)
   return group?.name || ''
+}
+
+function normalizeGroupName(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function findGroupByName(name) {
+  const target = normalizeGroupName(name)
+  if (!target) return null
+  return groups.value.find((g) => normalizeGroupName(g?.name) === target) || null
+}
+
+function buildGroupId() {
+  let id = ''
+  do {
+    id = `g_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  } while (groups.value.some((g) => g?.id === id))
+  return id
+}
+
+function buildSessionId() {
+  let id = ''
+  do {
+    id = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+  } while (sessions.value.some((s) => s?.id === id))
+  return id
+}
+
+function ensureGroup(name) {
+  const normalized = String(name || '').trim()
+  const existing = findGroupByName(normalized)
+  if (existing) {
+    return { created: false, group: existing }
+  }
+  const group = {
+    id: buildGroupId(),
+    name: normalized,
+    createdAt: Date.now()
+  }
+  groups.value.unshift(group)
+  persistState()
+  return { created: true, group }
 }
 
 function loadState() {
@@ -1132,16 +1395,6 @@ function loadState() {
   return { sessions: [], groups: [] }
 }
 
-function loadAutoAskSetting() {
-  try {
-    const value = localStorage.getItem(AUTO_ASK_KEY)
-    if (value === null) return false
-    return value === '1'
-  } catch {
-    return false
-  }
-}
-
 function loadActiveSessionId() {
   try {
     const value = localStorage.getItem(ACTIVE_SESSION_KEY)
@@ -1149,10 +1402,6 @@ function loadActiveSessionId() {
   } catch {
     return ''
   }
-}
-
-function persistAutoAskSetting() {
-  localStorage.setItem(AUTO_ASK_KEY, autoAskEnabled.value ? '1' : '0')
 }
 
 function parseStorage(key) {
@@ -1420,26 +1669,16 @@ function toNumber(value) {
 .actions {
   margin-top: 10px;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   gap: 10px;
-}
-
-.actions-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .actions-right {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
-}
-
-.mode-label {
-  font-size: 12px;
-  color: var(--color-muted);
 }
 
 .history-filters {
@@ -1450,8 +1689,70 @@ function toNumber(value) {
 }
 
 .history-filters.second-row {
-  grid-template-columns: auto auto;
+  grid-template-columns: 1fr auto;
   justify-content: space-between;
+}
+
+.group-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.group-edit-block {
+  margin-bottom: 14px;
+}
+
+.group-edit-title {
+  font-size: 13px;
+  color: var(--color-muted);
+  margin-bottom: 8px;
+}
+
+.group-edit-rename-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.group-edit-list {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+}
+
+.group-edit-batch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.group-edit-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.group-edit-item:last-child {
+  border-bottom: 0;
+}
+
+.group-edit-session-title {
+  font-size: 13px;
+  color: var(--color-primary-strong);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-edit-empty {
+  color: var(--color-muted);
+  font-size: 13px;
 }
 
 .history-tools {
@@ -1563,7 +1864,3 @@ function toNumber(value) {
   }
 }
 </style>
-
-
-
-

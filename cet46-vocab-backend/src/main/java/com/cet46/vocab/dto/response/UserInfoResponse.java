@@ -17,8 +17,10 @@ public class UserInfoResponse {
     private String llmStyle;
     private String llmProvider;
     private String llmLocalModel;
+    private String llmCloudModel;
     private Integer dailyTarget;
     private Integer totalDays;
     private Integer streakDays;
     private String role;
 }
+

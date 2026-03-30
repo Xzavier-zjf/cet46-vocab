@@ -117,12 +117,13 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String localModel = resolveUserLocalModel(userId);
-        if (isCloudUnavailable(provider)) {
+        String cloudModel = resolveUserCloudModel(userId);
+        if (isCloudUnavailable(provider, cloudModel)) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.regenerate");
-        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel);
+        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerate");
+        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel);
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", taskId);
         data.put("status", "pending");
@@ -145,12 +146,13 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String localModel = resolveUserLocalModel(userId);
-        if (isCloudUnavailable(provider)) {
+        String cloudModel = resolveUserCloudModel(userId);
+        if (isCloudUnavailable(provider, cloudModel)) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.regenerateExplain");
-        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel);
+        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerateExplain");
+        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel);
         Map<String, Object> data = new HashMap<>();
         data.put("status", "pending");
         data.put("style", style);
@@ -175,7 +177,8 @@ public class WordController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String localModel = resolveUserLocalModel(userId);
-        if (isCloudUnavailable(provider)) {
+        String cloudModel = resolveUserCloudModel(userId);
+        if (isCloudUnavailable(provider, cloudModel)) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
 
@@ -200,9 +203,9 @@ public class WordController {
         }
         for (Long pendingWordId : pendingWordIds) {
             wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel), "word.manual.retryPending");
-            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel);
-            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider, localModel);
+            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.retryPending");
+            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel);
+            llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel);
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -277,22 +280,35 @@ public class WordController {
         }
         return user.getLlmLocalModel().trim();
     }
-    private String resolveUsedModel(String provider, String localModel) {
+    private String resolveUserCloudModel(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return cloudLlmProperties.resolveDefaultModel();
+        }
+        if (StringUtils.hasText(user.getLlmCloudModel())) {
+            return user.getLlmCloudModel().trim();
+        }
+        return cloudLlmProperties.resolveDefaultModel();
+    }
+
+    private String resolveUsedModel(String provider, String localModel, String cloudModel) {
         if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
-            return cloudLlmProperties.getModel();
+            return cloudModel;
         }
         if (StringUtils.hasText(localModel)) {
             return localModel.trim();
         }
         return null;
     }
-    private boolean isCloudUnavailable(String provider) {
+    private boolean isCloudUnavailable(String provider, String cloudModel) {
         if (!LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
             return false;
         }
         return !Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
                 || !StringUtils.hasText(cloudLlmProperties.getBaseUrl())
-                || !StringUtils.hasText(cloudLlmProperties.getModel())
+                || !StringUtils.hasText(cloudModel)
                 || !StringUtils.hasText(cloudLlmProperties.getApiKey());
     }
 }
+
+

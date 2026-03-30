@@ -66,26 +66,26 @@ public class LlmAsyncService {
     }
 
     @Async("llmTaskExecutor")
-    public void generateWordContent(Long wordId, String wordType, String style, String provider, String localModel) {
-        doGenerateWordContent(wordId, wordType, style, provider, localModel, false);
+    public void generateWordContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel) {
+        doGenerateWordContent(wordId, wordType, style, provider, localModel, cloudModel, false);
     }
 
     @Async("llmTaskExecutor")
-    public void regenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel) {
-        doGenerateWordContent(wordId, wordType, style, provider, localModel, true);
+    public void regenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel) {
+        doGenerateWordContent(wordId, wordType, style, provider, localModel, cloudModel, true);
     }
 
     @Async("llmTaskExecutor")
-    public void generateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel) {
-        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, false);
+    public void generateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, false);
     }
 
     @Async("llmTaskExecutor")
-    public void regenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel) {
-        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, true);
+    public void regenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel) {
+        doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, true);
     }
 
-    private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel, boolean forceRefresh) {
+    private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel, boolean forceRefresh) {
         String normalizedProvider = LlmProvider.normalize(provider);
         try {
             String sentenceHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style);
@@ -127,7 +127,7 @@ public class LlmAsyncService {
 
             if (!StringUtils.hasText(sentenceContent)) {
                 try {
-                    sentenceContent = safeGenerate(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()), normalizedProvider, localModel);
+                    sentenceContent = safeGenerateJson(buildPrompt(PromptType.SENTENCE, style, wordBase, wordMeta.getPos()), normalizedProvider, localModel, cloudModel);
                 } catch (Exception ex) {
                     timeoutOccurred = logGenerationFailure("sentence", wordId, wordType, style, normalizedProvider, ex) || timeoutOccurred;
                 }
@@ -148,17 +148,17 @@ public class LlmAsyncService {
                 // Local models are often single-worker; sequential calls reduce timeout/failure rate.
                 synonymAttempt = generateSync(
                         synonymContent, "synonym", PromptType.SYNONYM,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, cloudModel, wordId, wordType);
                 mnemonicAttempt = generateSync(
                         mnemonicContent, "mnemonic", PromptType.MNEMONIC,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, cloudModel, wordId, wordType);
             } else {
                 CompletableFuture<GenerationAttempt> synonymFuture = generateAsync(
                         synonymContent, "synonym", PromptType.SYNONYM,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, cloudModel, wordId, wordType);
                 CompletableFuture<GenerationAttempt> mnemonicFuture = generateAsync(
                         mnemonicContent, "mnemonic", PromptType.MNEMONIC,
-                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, wordId, wordType);
+                        style, wordBase, wordMeta.getPos(), normalizedProvider, localModel, cloudModel, wordId, wordType);
                 synonymAttempt = synonymFuture.join();
                 mnemonicAttempt = mnemonicFuture.join();
             }
@@ -180,7 +180,7 @@ public class LlmAsyncService {
             mnemonicResult = ensureMnemonicResult(mnemonicResult, mnemonicContent);
             if (shouldTrySupplement(synonymResult, mnemonicResult)) {
                 try {
-                    String supplement = safeGenerate(buildSupplementPrompt(wordBase, wordMeta.getPos()), normalizedProvider, localModel);
+                    String supplement = safeGenerateJson(buildSupplementPrompt(wordBase, wordMeta.getPos()), normalizedProvider, localModel, cloudModel);
                     LlmResponseParser.SynonymResult supplementSynonym = llmResponseParser.parseSynonym(defaultString(supplement));
                     LlmResponseParser.MnemonicResult supplementMnemonic = llmResponseParser.parseMnemonic(defaultString(supplement));
                     supplementSynonym = ensureSynonymResult(supplementSynonym, supplement);
@@ -203,7 +203,7 @@ public class LlmAsyncService {
         }
     }
 
-    private void doGenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel, boolean forceRefresh) {
+    private void doGenerateWordExplainContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel, boolean forceRefresh) {
         String normalizedProvider = LlmProvider.normalize(provider);
         String explainHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "explain", style);
         try {
@@ -225,7 +225,7 @@ public class LlmAsyncService {
             String pos = StringUtils.hasText(wordMeta.getPos()) ? wordMeta.getPos() : parsePos(wordBase.chinese);
             if (!StringUtils.hasText(explain)) {
                 String prompt = buildExplainPrompt(wordBase, pos, resolveLevel(wordType), "");
-                explain = safeGenerate(prompt, normalizedProvider, localModel);
+                explain = safeGenerateJson(prompt, normalizedProvider, localModel, cloudModel);
                 if (StringUtils.hasText(explain)) {
                     llmCacheService.setCache(explainHash, explain);
                 }
@@ -366,12 +366,117 @@ public class LlmAsyncService {
         );
         return rows.isEmpty() ? null : rows.get(0);
     }
-    private String safeGenerate(String prompt, String provider, String localModel) {
+        private String safeGenerateJson(String prompt, String provider, String localModel, String cloudModel) {
+        if (!StringUtils.hasText(prompt)) {
+            return null;
+        }
+        String guardedPrompt = withJsonCompletionRule(prompt);
+        String merged = "";
+        String currentPrompt = guardedPrompt;
+
+        for (int i = 0; i <= 2; i++) {
+            String chunk = safeGenerate(currentPrompt, provider, localModel, cloudModel);
+            String piece = chunk == null ? "" : chunk.trim();
+            if (!StringUtils.hasText(piece)) {
+                break;
+            }
+            merged = mergeGeneratedChunks(merged, piece);
+            String normalized = stripJsonEndMarker(merged);
+            if (containsJsonEndMarker(merged)) {
+                return normalized;
+            }
+            if (parseJsonNode(normalized) != null) {
+                return normalized;
+            }
+            currentPrompt = buildJsonContinuationPrompt(guardedPrompt, normalized);
+        }
+
+        return stripJsonEndMarker(merged);
+    }
+
+    private String withJsonCompletionRule(String prompt) {
+        String marker = PromptTemplate.JSON_END_MARKER;
+        if (!StringUtils.hasText(prompt)) {
+            return "";
+        }
+        if (prompt.contains(marker)) {
+            return prompt;
+        }
+        return prompt
+                + "\n\n# COMPLETION RULE\n"
+                + "Output one complete JSON object only. Keep it concise.\n"
+                + "After the JSON is complete, output " + marker + " on a new line.\n";
+    }
+
+    private String buildJsonContinuationPrompt(String originalPrompt, String partialJsonText) {
+        return "# ORIGINAL TASK (DO NOT RESTART)\n"
+                + trimForPrompt(originalPrompt, 1400)
+                + "\n\n# PARTIAL OUTPUT ALREADY RETURNED\n"
+                + trimForPrompt(partialJsonText, 2200)
+                + "\n\n# CONTINUE RULES\n"
+                + "Continue from where it stopped. Do not repeat previous content.\n"
+                + "Only output the remaining JSON text.\n"
+                + "When complete, output " + PromptTemplate.JSON_END_MARKER + " on a new line.\n";
+    }
+
+    private String trimForPrompt(String text, int maxLen) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        String value = text.trim();
+        if (value.length() <= maxLen) {
+            return value;
+        }
+        return value.substring(0, maxLen) + "...";
+    }
+
+    private boolean containsJsonEndMarker(String text) {
+        return StringUtils.hasText(text) && text.contains(PromptTemplate.JSON_END_MARKER);
+    }
+
+    private String stripJsonEndMarker(String text) {
+        if (!StringUtils.hasText(text)) {
+            return "";
+        }
+        return text.replace(PromptTemplate.JSON_END_MARKER, "").trim();
+    }
+
+    private String mergeGeneratedChunks(String current, String nextChunk) {
+        String base = StringUtils.hasText(current) ? current.trim() : "";
+        String incoming = StringUtils.hasText(nextChunk) ? nextChunk.trim() : "";
+        if (!StringUtils.hasText(base)) {
+            return incoming;
+        }
+        if (!StringUtils.hasText(incoming)) {
+            return base;
+        }
+        if (base.contains(incoming)) {
+            return base;
+        }
+
+        int maxOverlap = Math.min(base.length(), incoming.length());
+        int overlap = 0;
+        for (int len = maxOverlap; len >= 8; len--) {
+            String suffix = base.substring(base.length() - len);
+            String prefix = incoming.substring(0, len);
+            if (suffix.equals(prefix)) {
+                overlap = len;
+                break;
+            }
+        }
+        String tail = overlap > 0 ? incoming.substring(overlap).trim() : incoming;
+        if (!StringUtils.hasText(tail)) {
+            return base;
+        }
+        return base + "\n" + tail;
+    }
+
+    private String safeGenerate(String prompt, String provider, String localModel, String cloudModel) {
         if (!StringUtils.hasText(prompt)) {
             return null;
         }
         if (LlmProvider.CLOUD.equals(provider)) {
-            return cloudLlmClient.generate(prompt);
+            return cloudLlmClient.generate(prompt, cloudModel);
         }
         return ollamaClient.generate(prompt, localModel);
     }
@@ -541,27 +646,11 @@ public class LlmAsyncService {
     }
 
     private String buildSupplementPrompt(WordBase wordBase, String pos) {
-        return """
-                Return ONLY valid JSON:
-                {
-                  "word":"%s",
-                  "synonyms":[
-                    {"synonym":"...", "difference":"Chinese explanation", "example":"English example"}
-                  ],
-                  "mnemonic":"Chinese memory tip",
-                  "root_analysis":"optional"
-                }
-                word=%s
-                phonetic=%s
-                pos=%s
-                chinese=%s
-                """.formatted(
-                defaultString(wordBase.english),
-                defaultString(wordBase.english),
-                defaultString(wordBase.phonetic),
-                defaultString(pos),
-                defaultString(wordBase.chinese)
-        );
+        return PromptTemplate.SUPPLEMENT_JSON
+                .replace("{{word}}", defaultString(wordBase.english))
+                .replace("{{phonetic}}", defaultString(wordBase.phonetic))
+                .replace("{{pos}}", defaultString(pos))
+                .replace("{{chinese}}", defaultString(wordBase.chinese));
     }
 
     private String buildExplainPrompt(WordBase wordBase, String pos, String level, String context) {
@@ -591,22 +680,24 @@ public class LlmAsyncService {
             if (!StringUtils.hasText(plain)) {
                 return null;
             }
-            if (plain.contains("Grammar usage:")) {
+            if (plain.contains("Grammar usage:")
+                    || plain.contains("\u8bed\u6cd5\u7528\u6cd5\uff1a")
+                    || plain.contains("\u8bed\u6cd5\u7528\u6cd5:")) {
                 return plain;
             }
             String fallbackGrammar = fallbackGrammarUsage(pos);
             if (!StringUtils.hasText(fallbackGrammar)) {
                 return plain;
             }
-            return plain + "\nGrammar usage:" + fallbackGrammar;
+            return plain + "\n\u8bed\u6cd5\u7528\u6cd5\uff1a" + fallbackGrammar;
         }
 
         StringBuilder sb = new StringBuilder();
-        appendIfPresent(sb, getText(node, "word"), "Word: ");
+        appendIfPresent(sb, getText(node, "word"), "\u8bcd\u6761\uff1a");
 
         JsonNode meanings = node.get("core_meanings");
         if (meanings != null && meanings.isArray() && !meanings.isEmpty()) {
-            List<String> lines = new ArrayList<>();
+            List<String> linesLocal = new ArrayList<>();
             int count = 0;
             for (JsonNode meaning : meanings) {
                 if (meaning == null || !meaning.isObject() || count >= 3) {
@@ -618,26 +709,26 @@ public class LlmAsyncService {
                         ? sense + ": " + cn
                         : (StringUtils.hasText(cn) ? cn : sense);
                 if (StringUtils.hasText(line)) {
-                    lines.add(line);
+                    linesLocal.add(line);
                     count++;
                 }
             }
-            if (!lines.isEmpty()) {
-                appendIfPresent(sb, String.join("; ", lines), "Core meanings: ");
+            if (!linesLocal.isEmpty()) {
+                appendIfPresent(sb, String.join("\uff1b", linesLocal), "\u6838\u5fc3\u4e49\u9879\uff1a");
             }
         }
 
         JsonNode examUsage = node.get("exam_usage");
         if (examUsage != null && examUsage.isObject()) {
-            appendIfPresent(sb, getText(examUsage, "note"), "Exam usage: ");
+            appendIfPresent(sb, getText(examUsage, "note"), "\u8003\u8bd5\u7528\u6cd5\uff1a");
         }
-        appendIfPresent(sb, getText(node, "memory_tip"), "Memory tip: ");
+        appendIfPresent(sb, getText(node, "memory_tip"), "\u8bb0\u5fc6\u63d0\u793a\uff1a");
 
         String grammarUsage = buildGrammarUsage(node.get("grammar_usage"));
         if (!StringUtils.hasText(grammarUsage)) {
             grammarUsage = fallbackGrammarUsage(pos);
         }
-        appendIfPresent(sb, grammarUsage, "Grammar usage:");
+        appendIfPresent(sb, grammarUsage, "\u8bed\u6cd5\u7528\u6cd5\uff1a");
 
         JsonNode confusables = node.get("confusables");
         if (confusables != null && confusables.isArray() && !confusables.isEmpty()) {
@@ -649,7 +740,7 @@ public class LlmAsyncService {
                     appendIfPresent(
                             sb,
                             defaultString(word) + (StringUtils.hasText(difference) ? ": " + difference : ""),
-                            "Confusable: "
+                            "\u6613\u6df7\u8bcd\uff1a"
                     );
                 }
             }
@@ -729,11 +820,11 @@ public class LlmAsyncService {
         }
         String verbPatterns = joinArray(grammarNode.get("verb_patterns"), 2);
         if (StringUtils.hasText(verbPatterns)) {
-            parts.add("Verb patterns: " + verbPatterns);
+            parts.add("\u52a8\u8bcd\u642d\u914d: " + verbPatterns);
         }
         String structures = joinArray(grammarNode.get("common_structures"), 2);
         if (StringUtils.hasText(structures)) {
-            parts.add("Common structures: " + structures);
+            parts.add("\u5e38\u89c1\u7ed3\u6784: " + structures);
         }
         String usageTip = getText(grammarNode, "usage_tip");
         if (StringUtils.hasText(usageTip)) {
@@ -833,6 +924,7 @@ public class LlmAsyncService {
                                                                 String pos,
                                                                 String provider,
                                                                 String localModel,
+                                                                String cloudModel,
                                                                 Long wordId,
                                                                 String wordType) {
         if (StringUtils.hasText(existingContent)) {
@@ -841,7 +933,7 @@ public class LlmAsyncService {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 String prompt = buildPrompt(promptEnum, style, wordBase, pos);
-                String content = safeGenerate(prompt, provider, localModel);
+                String content = safeGenerateJson(prompt, provider, localModel, cloudModel);
                 return new GenerationAttempt(content, false);
             } catch (Exception ex) {
                 boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
@@ -858,6 +950,7 @@ public class LlmAsyncService {
                                            String pos,
                                            String provider,
                                                                 String localModel,
+                                                                String cloudModel,
                                                                 Long wordId,
                                                                 String wordType) {
         if (StringUtils.hasText(existingContent)) {
@@ -865,7 +958,7 @@ public class LlmAsyncService {
         }
         try {
             String prompt = buildPrompt(promptEnum, style, wordBase, pos);
-            String content = safeGenerate(prompt, provider, localModel);
+            String content = safeGenerateJson(prompt, provider, localModel, cloudModel);
             return new GenerationAttempt(content, false);
         } catch (Exception ex) {
             boolean timeoutOccurred = logGenerationFailure(promptType, wordId, wordType, style, provider, ex);
@@ -1008,6 +1101,13 @@ public class LlmAsyncService {
     private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
+
+
+
+
+
+
+
 
 
 

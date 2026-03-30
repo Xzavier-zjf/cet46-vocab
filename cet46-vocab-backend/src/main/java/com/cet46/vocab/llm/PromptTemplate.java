@@ -300,6 +300,33 @@ public final class PromptTemplate {
             - Reference Chinese meaning: {{chinese}}
             """;
 
+    public static final String JSON_END_MARKER = "<<JSON_END>>";
+
+    public static final String SUPPLEMENT_JSON = """
+            # SYSTEM
+            You are a CET-4/CET-6 vocabulary assistant. Fill missing parts for synonyms and mnemonic.
+
+            # OUTPUT
+            Return ONLY one valid JSON object with these fields:
+            {
+              "word":"{{word}}",
+              "synonyms":[
+                {"synonym":"...", "difference":"Chinese explanation", "example":"English example"}
+              ],
+              "mnemonic":"Chinese memory tip",
+              "root_analysis":"optional"
+            }
+
+            # RULE
+            Keep concise and complete. No markdown, no extra text.
+
+            # USER
+            word={{word}}
+            phonetic={{phonetic}}
+            pos={{pos}}
+            chinese={{chinese}}
+            """;
+
     public static final String LEARNING_ASSISTANT_SYSTEM = """
             # ROLE
             You are a CET-4/CET-6 English learning assistant, not a general chatbot.

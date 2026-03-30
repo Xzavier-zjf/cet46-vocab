@@ -19,8 +19,14 @@ public class UpdatePreferenceRequest {
     @Size(max = 128, message = "llmLocalModel length must be <= 128")
     private String llmLocalModel;
 
+    @Size(max = 128, message = "llmCloudModel length must be <= 128")
+    private String llmCloudModel;
+
     @NotNull(message = "dailyTarget cannot be null")
     @Min(value = 1, message = "dailyTarget must be at least 1")
     @Max(value = 100, message = "dailyTarget must be at most 100")
     private Integer dailyTarget;
 }
+
+
+

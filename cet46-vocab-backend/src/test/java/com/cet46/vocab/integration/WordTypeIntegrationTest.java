@@ -165,7 +165,7 @@ class WordTypeIntegrationTest {
             pool.submit(() -> {
                 try {
                     start.await(5, TimeUnit.SECONDS);
-                    llmAsyncService.generateWordContent(wordId, wordType, style, "local");
+                    llmAsyncService.generateWordContent(wordId, wordType, style, "local", null, null);
                 } catch (InterruptedException ignored) {
                     Thread.currentThread().interrupt();
                 } finally {
@@ -213,6 +213,30 @@ class WordTypeIntegrationTest {
         }
     }
 
+    @Test
+    void detailShouldExtractGrammarUsageFromEnglishAndChinesePrefixes() {
+        String wordType = "cet4";
+        Long wordId = firstWordId(wordType);
+        String style = "story";
+        String englishExplain = "Core meaning: test\nGrammar usage: use with to do in formal writing\nNote: keep tense consistent";
+        String chineseExplain = "\u6838\u5fc3\u4e49\u9879\uff1a\u6d4b\u8bd5\n\u8bed\u6cd5\u7528\u6cd5\uff1a\u5e38\u7528\u4e8e\u4e66\u9762\u8bed\u4e2d\uff0c\u540e\u63a5to do\u7ed3\u6784\n\u6613\u6df7\u8bcd\uff1a\u65e0";
+
+        upsertWordMetaForGrammarUsage(wordId, wordType, style, englishExplain);
+        Result<WordDetailResponse> englishResult = wordController.getWordDetail(wordId, wordType, authentication);
+        assertSuccess(englishResult);
+        assertNotNull(englishResult.getData());
+        assertNotNull(englishResult.getData().getLlmContent());
+        assertEquals("use with to do in formal writing", englishResult.getData().getLlmContent().getGrammarUsage());
+
+        Authentication anotherAuth = createAuthentication();
+        upsertWordMetaForGrammarUsage(wordId, wordType, style, chineseExplain);
+        Result<WordDetailResponse> chineseResult = wordController.getWordDetail(wordId, wordType, anotherAuth);
+        assertSuccess(chineseResult);
+        assertNotNull(chineseResult.getData());
+        assertNotNull(chineseResult.getData().getLlmContent());
+        assertEquals("\u5e38\u7528\u4e8e\u4e66\u9762\u8bed\u4e2d\uff0c\u540e\u63a5to do\u7ed3\u6784", chineseResult.getData().getLlmContent().getGrammarUsage());
+    }
+
     private Long firstWordId(String type) {
         Result<PageResult<WordListItem>> listResult = wordController.getWordList(type, 1, 1, null, null, authentication);
         assertSuccess(listResult);
@@ -220,6 +244,41 @@ class WordTypeIntegrationTest {
         assertNotNull(listResult.getData().getList());
         assertFalse(listResult.getData().getList().isEmpty(), "empty list for " + type);
         return listResult.getData().getList().get(0).getWordId();
+    }
+
+    private Authentication createAuthentication() {
+        User user = User.builder()
+                .username("it_word_type_" + System.currentTimeMillis() + "_" + System.nanoTime())
+                .password("pwd")
+                .nickname("it")
+                .role("ADMIN")
+                .dailyTarget(20)
+                .build();
+        userMapper.insert(user);
+        return new TestingAuthenticationToken(String.valueOf(user.getId()), null);
+    }
+
+    private void upsertWordMetaForGrammarUsage(Long wordId, String wordType, String style, String aiExplain) {
+        int updated = jdbcTemplate.update(
+                "UPDATE word_meta " +
+                        "SET ai_explain = ?, ai_explain_status = 'full', gen_status = 'full', " +
+                        "sentence_en = 'This is a grammar usage test sentence.', sentence_zh = 'Grammar usage test sentence zh', " +
+                        "synonyms_json = '[{\"synonym\":\"sample\",\"difference\":\"test-only\",\"example\":\"This is a sample.\"}]', " +
+                        "mnemonic = 'sample mnemonic', root_analysis = 'sample root', updated_at = NOW() " +
+                        "WHERE word_id = ? AND word_type = ? AND style = ?",
+                aiExplain, wordId, wordType, style
+        );
+        if (updated > 0) {
+            return;
+        }
+        jdbcTemplate.update(
+                "INSERT INTO word_meta " +
+                        "(word_id, word_type, word, style, sentence_en, sentence_zh, synonyms_json, mnemonic, root_analysis, ai_explain, ai_explain_status, pos, gen_status, prompt_hash, created_at, updated_at) " +
+                        "VALUES (?, ?, ?, ?, 'This is a grammar usage test sentence.', 'Grammar usage test sentence zh', " +
+                        "'[{\"synonym\":\"sample\",\"difference\":\"test-only\",\"example\":\"This is a sample.\"}]', " +
+                        "'sample mnemonic', 'sample root', ?, 'full', 'v.', 'full', 'it-grammar-usage', NOW(), NOW())",
+                wordId, wordType, "grammar_usage_test", style, aiExplain
+        );
     }
 
     private static void assertSuccess(Result<?> result) {

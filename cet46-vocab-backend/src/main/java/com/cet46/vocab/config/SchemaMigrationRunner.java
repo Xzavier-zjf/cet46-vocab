@@ -21,6 +21,7 @@ public class SchemaMigrationRunner {
     public void migrate() {
         ensureUserLlmProviderColumn();
         ensureUserLlmLocalModelColumn();
+        ensureUserLlmCloudModelColumn();
         ensureWordMetaAiExplainColumns();
         ensureWordImportBatchTables();
     }
@@ -67,6 +68,27 @@ public class SchemaMigrationRunner {
         }
     }
 
+
+    private void ensureUserLlmCloudModelColumn() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM information_schema.COLUMNS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user' AND COLUMN_NAME = 'llm_cloud_model'",
+                    Integer.class
+            );
+            if (exists != null && exists > 0) {
+                return;
+            }
+
+            jdbcTemplate.execute(
+                    "ALTER TABLE user " +
+                            "ADD COLUMN llm_cloud_model VARCHAR(128) NULL AFTER llm_local_model"
+            );
+            log.info("added user.llm_cloud_model column");
+        } catch (Exception ex) {
+            log.error("failed to ensure user.llm_cloud_model column", ex);
+        }
+    }
     private void ensureWordMetaAiExplainColumns() {
         try {
             Integer explainExists = jdbcTemplate.queryForObject(
@@ -138,3 +160,6 @@ public class SchemaMigrationRunner {
         }
     }
 }
+
+
+

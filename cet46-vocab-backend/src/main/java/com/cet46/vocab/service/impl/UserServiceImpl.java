@@ -1,5 +1,6 @@
 package com.cet46.vocab.service.impl;
 
+import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.dto.request.ChangePasswordRequest;
 import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
@@ -44,6 +45,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final JdbcTemplate jdbcTemplate;
     private final CloudLlmClient cloudLlmClient;
+    private final CloudLlmProperties cloudLlmProperties;
     private final OllamaClient ollamaClient;
     private final PasswordEncoder passwordEncoder;
     private final LlmUsageTracker llmUsageTracker;
@@ -51,12 +53,14 @@ public class UserServiceImpl implements UserService {
     public UserServiceImpl(UserMapper userMapper,
                            JdbcTemplate jdbcTemplate,
                            CloudLlmClient cloudLlmClient,
+                           CloudLlmProperties cloudLlmProperties,
                            OllamaClient ollamaClient,
                            PasswordEncoder passwordEncoder,
                            LlmUsageTracker llmUsageTracker) {
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.cloudLlmClient = cloudLlmClient;
+        this.cloudLlmProperties = cloudLlmProperties;
         this.ollamaClient = ollamaClient;
         this.passwordEncoder = passwordEncoder;
         this.llmUsageTracker = llmUsageTracker;
@@ -81,6 +85,7 @@ public class UserServiceImpl implements UserService {
                 .llmStyle(user.getLlmStyle())
                 .llmProvider(LlmProvider.normalize(user.getLlmProvider()))
                 .llmLocalModel(normalizeModelName(user.getLlmLocalModel()))
+                .llmCloudModel(normalizeModelName(user.getLlmCloudModel()))
                 .dailyTarget(user.getDailyTarget())
                 .totalDays(totalDays)
                 .streakDays(streakDays)
@@ -112,10 +117,24 @@ public class UserServiceImpl implements UserService {
             user.setLlmLocalModel(localModel);
         }
 
+        if (req.getLlmCloudModel() != null) {
+            String cloudModel = normalizeModelName(req.getLlmCloudModel());
+            if (StringUtils.hasText(cloudModel) && !cloudLlmProperties.isSupportedModel(cloudModel)) {
+                throw new IllegalArgumentException("llmCloudModel is not supported: " + cloudModel);
+            }
+            user.setLlmCloudModel(cloudModel);
+        }
+
         if (LlmProvider.LOCAL.equals(provider)
                 && StringUtils.hasText(user.getLlmLocalModel())
                 && !ollamaClient.isModelInstalled(user.getLlmLocalModel())) {
             throw new IllegalArgumentException("llmLocalModel is not installed: " + user.getLlmLocalModel());
+        }
+
+        if (LlmProvider.CLOUD.equals(provider)
+                && StringUtils.hasText(user.getLlmCloudModel())
+                && !cloudLlmProperties.isSupportedModel(user.getLlmCloudModel())) {
+            throw new IllegalArgumentException("llmCloudModel is not supported: " + user.getLlmCloudModel());
         }
 
         user.setDailyTarget(req.getDailyTarget());
@@ -157,7 +176,7 @@ public class UserServiceImpl implements UserService {
         if (user == null) {
             throw new UsernameNotFoundException("user not found");
         }
-        CloudLlmHealthResponse response = cloudLlmClient.healthCheck();
+        CloudLlmHealthResponse response = cloudLlmClient.healthCheck(resolveUserCloudModel(user));
         response.setCurrentProvider(LlmProvider.normalize(user.getLlmProvider()));
         return response;
     }
@@ -221,6 +240,46 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+
+    @Override
+    public LocalModelListResponse getCloudModels(Long userId) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new UsernameNotFoundException("user not found");
+        }
+
+        List<String> models = cloudLlmProperties.resolveModels();
+        List<LocalModelItemResponse> items = models.stream()
+                .map(item -> LocalModelItemResponse.builder().name(item).build())
+                .toList();
+        String selectedModel = resolveSelectedCloudModel(user.getLlmCloudModel(), models);
+        String defaultModel = cloudLlmProperties.resolveDefaultModel();
+
+        return LocalModelListResponse.builder()
+                .serviceUp(Boolean.TRUE.equals(cloudLlmProperties.getEnabled()))
+                .baseUrl(cloudLlmProperties.getBaseUrl())
+                .count(items.size())
+                .selectedModel(selectedModel)
+                .defaultModel(defaultModel)
+                .models(items)
+                .message("\u4e91\u7aef\u6a21\u578b\u5217\u8868\u83b7\u53d6\u6210\u529f")
+                .build();
+    }
+
+    private String resolveSelectedCloudModel(String savedModel, List<String> models) {
+        if (StringUtils.hasText(savedModel) && containsCloudModel(models, savedModel.trim())) {
+            return savedModel.trim();
+        }
+        String defaultModel = cloudLlmProperties.resolveDefaultModel();
+        if (StringUtils.hasText(defaultModel) && containsCloudModel(models, defaultModel.trim())) {
+            return defaultModel.trim();
+        }
+        if (models != null && !models.isEmpty()) {
+            return models.get(0);
+        }
+        return "";
+    }
+
     private String resolveSelectedModel(String savedModel, List<LocalModelItemResponse> items) {
         if (StringUtils.hasText(savedModel) && containsModel(items, savedModel.trim())) {
             return savedModel.trim();
@@ -247,7 +306,19 @@ public class UserServiceImpl implements UserService {
         return false;
     }
 
-    
+
+    private boolean containsCloudModel(List<String> items, String model) {
+        if (items == null || items.isEmpty() || !StringUtils.hasText(model)) {
+            return false;
+        }
+        String target = model.trim();
+        for (String item : items) {
+            if (StringUtils.hasText(item) && target.equals(item.trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
     @Override
     public LlmLastUsedResponse getLastUsedLlm(Long userId) {
         User user = userMapper.selectById(userId);
@@ -345,6 +416,14 @@ public class UserServiceImpl implements UserService {
         return value.trim();
     }
 
+
+    private String resolveUserCloudModel(User user) {
+        String userModel = normalizeModelName(user.getLlmCloudModel());
+        if (StringUtils.hasText(userModel) && cloudLlmProperties.isSupportedModel(userModel)) {
+            return userModel;
+        }
+        return cloudLlmProperties.resolveDefaultModel();
+    }
     private List<LocalDate> queryDistinctReviewDates(Long userId) {
         String sql = "SELECT DISTINCT DATE(reviewed_at) AS review_date FROM review_log WHERE user_id = ? ORDER BY review_date DESC";
         try {
@@ -374,3 +453,15 @@ public class UserServiceImpl implements UserService {
         return streak;
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+

@@ -19,10 +19,9 @@ class LlmResponseParserTest {
 
     @Test
     void sentenceJsonShouldParseSuccessfully() {
-        // 测试意图：标准 JSON 能被正确解析为 sentence 结构
         String json = "{" +
                 "\"sentenceEn\":\"He abandoned the plan.\"," +
-                "\"sentenceZh\":\"\u4ed6\u653e\u5f03\u4e86\u8ba1\u5212\u3002\"," +
+                "\"sentenceZh\":\"He gave it up.\"," +
                 "\"difficulty\":\"CET-4\"" +
                 "}";
 
@@ -30,13 +29,12 @@ class LlmResponseParserTest {
 
         assertNotNull(result);
         assertEquals("He abandoned the plan.", result.sentenceEn());
-        assertEquals("他放弃了计划。", result.sentenceZh());
+        assertEquals("He gave it up.", result.sentenceZh());
         assertEquals("CET-4", result.difficulty());
     }
 
     @Test
     void brokenJsonShouldFallbackToRegex() {
-        // 测试意图：JSON 非法时，仍可从键值片段中提取内容
         String broken = "prefix \"sentenceEn\":\"Fallback en\", \"sentenceZh\":\"Fallback zh\", \"difficulty\":\"CET-6\" suffix";
 
         LlmResponseParser.SentenceResult result = parser.parseSentence(broken);
@@ -47,26 +45,36 @@ class LlmResponseParserTest {
         assertEquals("CET-6", result.difficulty());
     }
 
-
-
     @Test
     void wrappedContentStringJsonShouldParseSuccessfully() {
-        // 测试意图：当外层 content 字段是 JSON 字符串时，解析器也应正确解包
         String wrapped = "{" +
-                "\"content\":\"{\\\"sentenceEn\\\":\\\"Nested en\\\",\\\"sentenceZh\\\":\\\"\u5d4c\u5957\\\",\\\"difficulty\\\":\\\"CET-6\\\"}\"" +
+                "\"content\":\"{\\\"sentenceEn\\\":\\\"Nested en\\\",\\\"sentenceZh\\\":\\\"Nested zh\\\",\\\"difficulty\\\":\\\"CET-6\\\"}\"" +
                 "}";
 
         LlmResponseParser.SentenceResult result = parser.parseSentence(wrapped);
 
         assertNotNull(result);
         assertEquals("Nested en", result.sentenceEn());
-        assertEquals("嵌套", result.sentenceZh());
+        assertEquals("Nested zh", result.sentenceZh());
         assertEquals("CET-6", result.difficulty());
     }
 
     @Test
+    void synonymStringArrayShouldParseSuccessfully() {
+        String json = "{" +
+                "\"synonyms\":[\"abandon\",\"quit\"]" +
+                "}";
+
+        LlmResponseParser.SynonymResult result = parser.parseSynonym(json);
+
+        assertNotNull(result);
+        assertNotNull(result.synonyms());
+        assertEquals(2, result.synonyms().size());
+        assertEquals("abandon", result.synonyms().get(0).synonym());
+    }
+
+    @Test
     void invalidContentShouldReturnNull() {
-        // 测试意图：既不是合法 JSON 也无可提取字段时返回 null
         String invalid = "totally-invalid-content-without-any-expected-keys";
 
         LlmResponseParser.SentenceResult sentenceResult = parser.parseSentence(invalid);

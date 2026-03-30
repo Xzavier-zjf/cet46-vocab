@@ -237,7 +237,7 @@ public class AdminWordBankController {
                 Long.class, limit
         );
         for (Long id : ids) {
-            llmAsyncService.generateWordExplainContent(id, wordType, style, provider, null);
+            llmAsyncService.generateWordExplainContent(id, wordType, style, provider, null, null);
         }
         Map<String, Object> data = new HashMap<>();
         data.put("queued", ids.size());
@@ -267,7 +267,7 @@ public class AdminWordBankController {
                 Long.class, wordType, style, limit
         );
         for (Long id : ids) {
-            llmAsyncService.generateWordExplainContent(id, wordType, style, provider, null);
+            llmAsyncService.generateWordExplainContent(id, wordType, style, provider, null, null);
         }
         Map<String, Object> data = new HashMap<>();
         data.put("queued", ids.size());
@@ -517,6 +517,7 @@ public class AdminWordBankController {
         private Integer limit = 100;
     }
 }
+
 
 
 
