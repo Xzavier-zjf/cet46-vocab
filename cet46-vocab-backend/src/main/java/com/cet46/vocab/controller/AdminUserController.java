@@ -7,8 +7,11 @@ import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.mapper.UserMapper;
+import com.cet46.vocab.service.RolePermissionService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -23,8 +26,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/users")
@@ -32,10 +37,14 @@ public class AdminUserController {
 
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
+    private final RolePermissionService rolePermissionService;
 
-    public AdminUserController(UserMapper userMapper, PasswordEncoder passwordEncoder) {
+    public AdminUserController(UserMapper userMapper,
+                               PasswordEncoder passwordEncoder,
+                               RolePermissionService rolePermissionService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
+        this.rolePermissionService = rolePermissionService;
     }
 
     @GetMapping
@@ -57,6 +66,46 @@ public class AdminUserController {
         List<AdminUserItem> list = users.getRecords().stream().map(this::toItem).toList();
         PageResult<AdminUserItem> result = new PageResult<>(users.getTotal(), pageNo, pageSize, list);
         return Result.success(result);
+    }
+
+    @GetMapping("/role-permissions")
+    public Result<List<RolePermissionItem>> getRolePermissions() {
+        List<RolePermissionItem> items = rolePermissionService.listRolePermissions().stream()
+                .map(item -> new RolePermissionItem(item.getRole(), item.getPermissions()))
+                .toList();
+        return Result.success(items);
+    }
+
+    @PutMapping("/role-permissions")
+    public Result<Void> updateRolePermissions(@Valid @RequestBody UpdateRolePermissionsRequest req,
+                                              Authentication authentication) {
+        Map<String, List<String>> permissions = new LinkedHashMap<>();
+        for (RolePermissionItem item : req.getItems()) {
+            permissions.put(item.getRole().trim().toUpperCase(Locale.ROOT), item.getPermissions());
+        }
+        if (permissions.isEmpty()) {
+            return Result.fail(ResultCode.BAD_REQUEST.getCode(), "items must include at least one role");
+        }
+        rolePermissionService.updateRolePermissions(permissions, currentUserId(authentication));
+        return Result.success();
+    }
+
+    @GetMapping("/role-permissions/audits")
+    public Result<PageResult<RolePermissionAuditItem>> listRolePermissionAudits(
+            @RequestParam(value = "page", required = false, defaultValue = "1") Integer page,
+            @RequestParam(value = "size", required = false, defaultValue = "10") Integer size) {
+        PageResult<RolePermissionService.RolePermissionAuditItem> pageData = rolePermissionService.listAuditLogs(page, size);
+        List<RolePermissionAuditItem> list = pageData.getList().stream().map(item -> {
+            RolePermissionAuditItem out = new RolePermissionAuditItem();
+            out.setId(item.getId());
+            out.setActorUserId(item.getActorUserId());
+            out.setRole(item.getRole());
+            out.setBeforePermissions(item.getBeforePermissions());
+            out.setAfterPermissions(item.getAfterPermissions());
+            out.setChangedAt(item.getChangedAt());
+            return out;
+        }).toList();
+        return Result.success(new PageResult<>(pageData.getTotal(), pageData.getPage(), pageData.getSize(), list));
     }
 
     @PutMapping("/{id}/role")
@@ -167,4 +216,36 @@ public class AdminUserController {
         @NotBlank
         private String newPassword;
     }
+
+    @Data
+    public static class RolePermissionItem {
+        @NotBlank
+        private String role;
+        private List<String> permissions;
+
+        public RolePermissionItem() {
+        }
+
+        public RolePermissionItem(String role, List<String> permissions) {
+            this.role = role;
+            this.permissions = permissions;
+        }
+    }
+
+    @Data
+    public static class RolePermissionAuditItem {
+        private Long id;
+        private Long actorUserId;
+        private String role;
+        private List<String> beforePermissions;
+        private List<String> afterPermissions;
+        private LocalDateTime changedAt;
+    }
+
+    @Data
+    public static class UpdateRolePermissionsRequest {
+        @NotEmpty
+        private List<@NotNull @Valid RolePermissionItem> items;
+    }
 }
+

@@ -8,3 +8,25 @@ server:
   port: 8080
   servlet:
     context-path: /api
+
+llm:
+  cloud:
+    providers:
+      - bailian
+    provider-labels:
+      bailian: "\u767e\u70bc"
+
+
+security:
+  rbac:
+    role-permissions:
+      ADMIN:
+        - PRIVATE_CLOUD_MODEL_CREATE
+        - PRIVATE_CLOUD_MODEL_EDIT
+        - PRIVATE_CLOUD_MODEL_DELETE
+        - PRIVATE_CLOUD_MODEL_TOGGLE
+      USER:
+        - PRIVATE_CLOUD_MODEL_CREATE
+        - PRIVATE_CLOUD_MODEL_EDIT
+        - PRIVATE_CLOUD_MODEL_DELETE
+        - PRIVATE_CLOUD_MODEL_TOGGLE

@@ -50,11 +50,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const route = useRoute()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const loading = ref(false)
 const formRef = ref()
 
@@ -70,9 +72,8 @@ const rules = {
 
 const handleLogin = async () => {
   await formRef.value.validate(async (valid) => {
-    if (!valid) {
-      return
-    }
+    if (!valid) return
+
     loading.value = true
     try {
       const res = await login(form)
@@ -82,6 +83,8 @@ const handleLogin = async () => {
       }
       userStore.setUserInfo(res.data || {})
       await userStore.fetchUserInfo()
+      themeStore.setActiveIdentity(userStore.userId || userStore.username || '')
+
       const redirect = route.query.redirect ? decodeURIComponent(route.query.redirect) : '/dashboard'
       router.push(redirect)
       ElMessage.success('登录成功')

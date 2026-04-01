@@ -85,6 +85,79 @@ public class LlmAsyncService {
         doGenerateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, true);
     }
 
+    public void markWordContentPending(Long wordId, String wordType, String style, boolean clearExistingContent) {
+        if (wordId == null || !StringUtils.hasText(wordType) || !StringUtils.hasText(style)) {
+            return;
+        }
+        String promptHash = CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style);
+        WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+        if (wordMeta == null) {
+            WordBase wordBase = loadWordBase(wordId, wordType);
+            String english = wordBase == null ? "" : defaultString(wordBase.english);
+            WordMeta created = WordMeta.builder()
+                    .wordId(wordId)
+                    .wordType(wordType)
+                    .word(english)
+                    .style(style)
+                    .genStatus("pending")
+                    .promptHash(promptHash)
+                    .build();
+            try {
+                wordMetaMapper.insert(created);
+                return;
+            } catch (DuplicateKeyException duplicateKeyException) {
+                wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+                if (wordMeta == null) {
+                    throw duplicateKeyException;
+                }
+            }
+        }
+        if (clearExistingContent) {
+            wordMeta.setSentenceEn(null);
+            wordMeta.setSentenceZh(null);
+            wordMeta.setSynonymsJson(null);
+            wordMeta.setMnemonic(null);
+            wordMeta.setRootAnalysis(null);
+        }
+        wordMeta.setGenStatus("pending");
+        wordMeta.setPromptHash(promptHash);
+        wordMetaMapper.updateById(wordMeta);
+    }
+
+    public void markWordExplainPending(Long wordId, String wordType, String style, boolean clearExistingContent) {
+        if (wordId == null || !StringUtils.hasText(wordType) || !StringUtils.hasText(style)) {
+            return;
+        }
+        WordMeta wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+        if (wordMeta == null) {
+            WordBase wordBase = loadWordBase(wordId, wordType);
+            String english = wordBase == null ? "" : defaultString(wordBase.english);
+            WordMeta created = WordMeta.builder()
+                    .wordId(wordId)
+                    .wordType(wordType)
+                    .word(english)
+                    .style(style)
+                    .genStatus("pending")
+                    .promptHash(CACHE_PREFIX + llmCacheService.buildHash(wordId, wordType, "sentence", style))
+                    .aiExplainStatus("pending")
+                    .build();
+            try {
+                wordMetaMapper.insert(created);
+                return;
+            } catch (DuplicateKeyException duplicateKeyException) {
+                wordMeta = wordMetaMapper.selectByWordAndStyle(wordId, wordType, style);
+                if (wordMeta == null) {
+                    throw duplicateKeyException;
+                }
+            }
+        }
+        if (clearExistingContent) {
+            wordMeta.setAiExplain(null);
+        }
+        wordMeta.setAiExplainStatus("pending");
+        wordMetaMapper.updateById(wordMeta);
+    }
+
     private void doGenerateWordContent(Long wordId, String wordType, String style, String provider, String localModel, String cloudModel, boolean forceRefresh) {
         String normalizedProvider = LlmProvider.normalize(provider);
         try {
@@ -1101,13 +1174,3 @@ public class LlmAsyncService {
     private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
-
-
-
-
-
-
-
-
-
-

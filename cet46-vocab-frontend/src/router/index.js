@@ -1,8 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
-const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/assistant', '/stats', '/profile', '/admin/users', '/admin']
+const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/assistant', '/stats', '/profile', '/admin/users', '/admin/permissions', '/admin']
 
 const getMenuRoot = (path) => MENU_ROOTS.find((root) => path === root || path.startsWith(`${root}/`))
 
@@ -33,6 +34,7 @@ const routes = [
   { path: '/profile', name: 'Profile', component: () => import('@/views/Profile.vue'), meta: { requiresAuth: true } },
   { path: '/admin', name: 'AdminDashboard', component: () => import('@/views/admin/AdminDashboard.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/admin/users', name: 'AdminUsers', component: () => import('@/views/admin/UserManagement.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
+  { path: '/admin/permissions', name: 'AdminPermissions', component: () => import('@/views/admin/RolePermissionManagement.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/', redirect: '/dashboard' },
   { path: '/:pathMatch(.*)*', redirect: '/dashboard' }
 ]
@@ -70,8 +72,13 @@ router.beforeEach(async (to, from, next) => {
   }
 
   const userStore = useUserStore()
+  const themeStore = useThemeStore()
   const hasToken = !!userStore.token
   const requiresAuth = !!to.meta.requiresAuth
+
+  if (!hasToken && themeStore.activeIdentity) {
+    themeStore.setActiveIdentity('')
+  }
 
   if (!hasToken && requiresAuth) {
     next(`/login?redirect=${encodeURIComponent(to.fullPath)}`)
@@ -86,11 +93,16 @@ router.beforeEach(async (to, from, next) => {
   if (hasToken && !userStore.userId) {
     try {
       await userStore.fetchUserInfo()
+      themeStore.setActiveIdentity(userStore.userId || userStore.username || '')
     } catch (error) {
       userStore.clearUserInfo()
       next('/login')
       return
     }
+  }
+
+  if (hasToken && userStore.userId) {
+    themeStore.setActiveIdentity(userStore.userId || userStore.username || '')
   }
 
   if (hasToken && requiresAuth && userStore.llmStyle == null && to.path !== '/onboarding') {
@@ -104,7 +116,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (hasToken && userStore.role === 'ADMIN') {
-    const allowList = ['/admin', '/admin/users', '/profile', '/onboarding']
+    const allowList = ['/admin', '/admin/users', '/admin/permissions', '/profile', '/onboarding']
     if (!allowList.some((path) => to.path === path || to.path.startsWith(`${path}/`))) {
       next('/admin')
       return
@@ -123,3 +135,4 @@ router.afterEach((to) => {
 })
 
 export default router
+

@@ -38,6 +38,22 @@ llm:
       - qwen3.5-27b
       - MiniMax-M2.5
       - gui-plus-2026-02-26
+    providers:
+      - bailian
+      - openai
+      - deepseek
+      - openrouter
+      - groq
+      - xai
+      - minimax
+    provider-labels:
+      bailian: "\u767e\u70bc"
+      openai: OpenAI
+      deepseek: DeepSeek
+      openrouter: OpenRouter
+      groq: Groq
+      xai: xAI
+      minimax: MiniMax
     api-key: ${LLM_CLOUD_API_KEY:${DASHSCOPE_API_KEY:${ALIYUN_DASHSCOPE_API_KEY:}}}
     timeout: 90s
     max-retries: 1
@@ -53,3 +69,5 @@ cors:
 
 knife4j:
   enabled: true
+
+

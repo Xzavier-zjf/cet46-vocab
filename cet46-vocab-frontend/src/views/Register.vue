@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="auth-page">
     <div class="auth-card">
       <div class="title-wrap">
@@ -61,10 +61,12 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { login, register } from '@/api/auth'
 import { useUserStore } from '@/stores/user'
+import { useThemeStore } from '@/stores/theme'
 import BtnPrimary from '@/components/common/BtnPrimary.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
+const themeStore = useThemeStore()
 const loading = ref(false)
 const formRef = ref()
 
@@ -90,11 +92,11 @@ const validateConfirmPassword = (_rule, value, callback) => {
 const rules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 4, max: 20, message: '用户名长度4-20位', trigger: 'blur' }
+    { min: 4, max: 20, message: '用户名长度 4-20 位', trigger: 'blur' }
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度6-20位', trigger: 'blur' }
+    { min: 6, max: 20, message: '密码长度 6-20 位', trigger: 'blur' }
   ],
   confirmPassword: [{ validator: validateConfirmPassword, trigger: 'blur' }]
 }
@@ -129,6 +131,7 @@ const handleRegister = async () => {
 
       userStore.setUserInfo(loginRes.data || {})
       await userStore.fetchUserInfo()
+      themeStore.setActiveIdentity(userStore.userId || userStore.username || '')
       ElMessage.success('注册成功')
       router.push('/onboarding')
     } finally {

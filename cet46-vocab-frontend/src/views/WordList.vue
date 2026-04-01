@@ -35,8 +35,22 @@
         <template #default="scope">
           <div class="word-cell">
             <button class="word-link" @click="goDetail(scope.row)">{{ scope.row.english }}</button>
-            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'uk')">UK</button>
-            <button class="quick-speak" @click="handleSpeak(scope.row.english, 'us')">US</button>
+            <button
+              class="quick-speak"
+              title="播放英式发音"
+              aria-label="播放英式发音"
+              @click="handleSpeak(scope.row.english, 'uk')"
+            >
+              英音
+            </button>
+            <button
+              class="quick-speak"
+              title="播放美式发音"
+              aria-label="播放美式发音"
+              @click="handleSpeak(scope.row.english, 'us')"
+            >
+              美音
+            </button>
           </div>
         </template>
       </el-table-column>
@@ -389,10 +403,16 @@ onUnmounted(() => {
   border: 1px solid var(--color-border-soft);
   background: var(--color-surface);
   color: var(--color-warning);
-  border-radius: 12px;
+  border-radius: 999px;
   font-size: 12px;
-  padding: 1px 6px;
+  line-height: 1;
+  padding: 4px 8px;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.quick-speak:hover {
+  border-color: var(--color-warning);
 }
 
 .operation-stack {

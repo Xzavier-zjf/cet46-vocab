@@ -7,6 +7,7 @@ import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
 import com.cet46.vocab.entity.Cet4Word;
 import com.cet46.vocab.entity.Cet6Word;
+import com.cet46.vocab.entity.CloudLlmModel;
 import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmCacheService;
@@ -14,6 +15,7 @@ import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
+import com.cet46.vocab.service.CloudLlmModelService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -21,8 +23,11 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,6 +39,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/admin/llm")
@@ -47,19 +53,22 @@ public class AdminController {
     private final Cet4WordMapper cet4WordMapper;
     private final Cet6WordMapper cet6WordMapper;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final CloudLlmModelService cloudLlmModelService;
 
     public AdminController(LlmAsyncService llmAsyncService,
                            LlmCacheService llmCacheService,
                            WordMetaMapper wordMetaMapper,
                            Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
-                           RedisTemplate<String, Object> redisTemplate) {
+                           RedisTemplate<String, Object> redisTemplate,
+                           CloudLlmModelService cloudLlmModelService) {
         this.llmAsyncService = llmAsyncService;
         this.llmCacheService = llmCacheService;
         this.wordMetaMapper = wordMetaMapper;
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.redisTemplate = redisTemplate;
+        this.cloudLlmModelService = cloudLlmModelService;
     }
 
     @PostMapping("/batch-generate")
@@ -145,6 +154,65 @@ public class AdminController {
         return Result.success(data);
     }
 
+
+    @GetMapping("/cloud-models")
+    public Result<List<CloudModelItem>> listCloudModels() {
+        List<CloudModelItem> items = cloudLlmModelService.listAll().stream()
+                .map(this::toCloudModelItem)
+                .collect(Collectors.toList());
+        return Result.success(items);
+    }
+
+    @PostMapping("/cloud-models")
+    public Result<CloudModelItem> createCloudModel(@Valid @RequestBody CloudModelSaveRequest req) {
+        CloudLlmModel saved = cloudLlmModelService.create(
+                req.getProvider(),
+                req.getModelKey(),
+                req.getDisplayName(),
+                req.getEnabled(),
+                req.getIsDefault()
+        );
+        return Result.success(toCloudModelItem(saved));
+    }
+
+    @PutMapping("/cloud-models/{id}")
+    public Result<CloudModelItem> updateCloudModel(@PathVariable("id") Long id,
+                                                    @Valid @RequestBody CloudModelSaveRequest req) {
+        CloudLlmModel saved = cloudLlmModelService.update(
+                id,
+                req.getProvider(),
+                req.getModelKey(),
+                req.getDisplayName(),
+                req.getEnabled(),
+                req.getIsDefault()
+        );
+        return Result.success(toCloudModelItem(saved));
+    }
+
+    @PutMapping("/cloud-models/{id}/default")
+    public Result<CloudModelItem> setDefaultCloudModel(@PathVariable("id") Long id) {
+        CloudLlmModel saved = cloudLlmModelService.setDefault(id);
+        return Result.success(toCloudModelItem(saved));
+    }
+
+    @DeleteMapping("/cloud-models/{id}")
+    public Result<Void> deleteCloudModel(@PathVariable("id") Long id) {
+        cloudLlmModelService.delete(id);
+        return Result.success();
+    }
+
+    private CloudModelItem toCloudModelItem(CloudLlmModel item) {
+        CloudModelItem out = new CloudModelItem();
+        out.setId(item.getId());
+        out.setProvider(item.getProvider());
+        out.setModelKey(item.getModelKey());
+        out.setDisplayName(item.getDisplayName());
+        out.setEnabled(Boolean.TRUE.equals(item.getEnabled()));
+        out.setIsDefault(Boolean.TRUE.equals(item.getIsDefault()));
+        out.setCreatedAt(item.getCreatedAt());
+        out.setUpdatedAt(item.getUpdatedAt());
+        return out;
+    }
     private List<Long> findCandidateWordIds(String wordType, String style, int limit) {
         List<Long> candidates = new ArrayList<>();
         int fetchBatchSize = Math.max(limit * 3, 200);
@@ -276,6 +344,27 @@ public class AdminController {
     }
 
     @Data
+    public static class CloudModelSaveRequest {
+        private String provider;
+        @NotBlank
+        private String modelKey;
+        private String displayName;
+        private Boolean enabled;
+        private Boolean isDefault;
+    }
+
+    @Data
+    public static class CloudModelItem {
+        private Long id;
+        private String provider;
+        private String modelKey;
+        private String displayName;
+        private Boolean enabled;
+        private Boolean isDefault;
+        private java.time.LocalDateTime createdAt;
+        private java.time.LocalDateTime updatedAt;
+    }
+    @Data
     public static class AdminReviewItem {
         private Long wordId;
         private String wordType;
@@ -286,5 +375,11 @@ public class AdminController {
         private String mnemonic;
     }
 }
+
+
+
+
+
+
 
 

@@ -61,6 +61,7 @@ import {
   User,
   Upload,
   UserFilled,
+  Lock,
   ChatDotRound,
   ArrowDown,
   Moon,
@@ -85,6 +86,7 @@ const menuItems = computed(() => {
     return [
       { label: '词库导入', path: '/admin', icon: Upload, exact: true },
       { label: '用户管理', path: '/admin/users', icon: UserFilled, exact: false },
+      { label: '权限管理', path: '/admin/permissions', icon: Lock, exact: false },
       { label: '我的资料', path: '/profile', icon: User, exact: false }
     ]
   }

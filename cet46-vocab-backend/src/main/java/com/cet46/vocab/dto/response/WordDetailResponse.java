@@ -30,8 +30,11 @@ public class WordDetailResponse {
         private String genStatus;
         private String style;
         private Sentence sentence;
+        private String sentenceStatus;
         private List<SynonymItem> synonyms;
+        private String synonymStatus;
         private Mnemonic mnemonic;
+        private String mnemonicStatus;
         private String smartExplain;
         private String grammarUsage;
         private String explainStatus;

@@ -20,6 +20,7 @@ import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
+import com.cet46.vocab.service.CloudLlmModelService;
 import com.cet46.vocab.service.WordService;
 import com.cet46.vocab.utils.PosParser;
 import com.fasterxml.jackson.databind.JavaType;
@@ -67,6 +68,7 @@ public class WordServiceImpl implements WordService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final CloudLlmProperties cloudLlmProperties;
     private final LlmUsageTracker llmUsageTracker;
+    private final CloudLlmModelService cloudLlmModelService;
 
     public WordServiceImpl(Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
@@ -77,7 +79,8 @@ public class WordServiceImpl implements WordService {
                            ObjectMapper objectMapper,
                            RedisTemplate<String, Object> redisTemplate,
                            CloudLlmProperties cloudLlmProperties,
-                           LlmUsageTracker llmUsageTracker) {
+                           LlmUsageTracker llmUsageTracker,
+                           CloudLlmModelService cloudLlmModelService) {
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.wordMetaMapper = wordMetaMapper;
@@ -88,6 +91,7 @@ public class WordServiceImpl implements WordService {
         this.redisTemplate = redisTemplate;
         this.cloudLlmProperties = cloudLlmProperties;
         this.llmUsageTracker = llmUsageTracker;
+        this.cloudLlmModelService = cloudLlmModelService;
     }
 
     @Override
@@ -588,13 +592,21 @@ public class WordServiceImpl implements WordService {
                     .genStatus("pending")
                     .style(style)
                     .sentence(new WordDetailResponse.Sentence(null, null, null))
+                    .sentenceStatus("pending")
                     .synonyms(Collections.emptyList())
+                    .synonymStatus("pending")
                     .mnemonic(new WordDetailResponse.Mnemonic(null, null))
+                    .mnemonicStatus("pending")
                     .smartExplain(null)
                     .grammarUsage(null)
                     .explainStatus("pending")
                     .build();
         }
+
+        List<WordDetailResponse.SynonymItem> synonyms = parseSynonyms(wordMeta.getSynonymsJson());
+        boolean hasSentence = StringUtils.hasText(wordMeta.getSentenceEn()) || StringUtils.hasText(wordMeta.getSentenceZh());
+        boolean hasSynonyms = synonyms != null && !synonyms.isEmpty();
+        boolean hasMnemonic = StringUtils.hasText(wordMeta.getMnemonic()) || StringUtils.hasText(wordMeta.getRootAnalysis());
 
         return WordDetailResponse.LlmContent.builder()
                 .genStatus(wordMeta.getGenStatus())
@@ -603,15 +615,30 @@ public class WordServiceImpl implements WordService {
                         wordMeta.getSentenceEn(),
                         wordMeta.getSentenceZh(),
                         wordMeta.getSentenceDifficulty()))
-                .synonyms(parseSynonyms(wordMeta.getSynonymsJson()))
+                .sentenceStatus(resolveSectionStatus(wordMeta.getGenStatus(), hasSentence))
+                .synonyms(synonyms)
+                .synonymStatus(resolveSectionStatus(wordMeta.getGenStatus(), hasSynonyms))
                 .mnemonic(new WordDetailResponse.Mnemonic(
                         wordMeta.getMnemonic(),
                         wordMeta.getRootAnalysis()))
+                .mnemonicStatus(resolveSectionStatus(wordMeta.getGenStatus(), hasMnemonic))
                 .smartExplain(wordMeta.getAiExplain())
                 .grammarUsage(resolveGrammarUsage(wordMeta.getAiExplain(), pos))
                 .explainStatus(resolveExplainStatus(wordMeta))
                 .build();
     }
+
+    private String resolveSectionStatus(String genStatus, boolean hasContent) {
+        if (hasContent) {
+            return "full";
+        }
+        String normalized = StringUtils.hasText(genStatus) ? genStatus.trim().toLowerCase() : "pending";
+        if ("pending".equals(normalized) || "partial".equals(normalized)) {
+            return "pending";
+        }
+        return "fallback";
+    }
+
     private String resolveGrammarUsage(String explain, String pos) {
         if (!StringUtils.hasText(explain)) {
             return fallbackGrammarUsage(pos);
@@ -763,12 +790,9 @@ public class WordServiceImpl implements WordService {
     private String getUserCloudModel(Long userId) {
         User user = userMapper.selectById(userId);
         if (user == null) {
-            return cloudLlmProperties.resolveDefaultModel();
+            return cloudLlmModelService.resolveDefaultModelForUser(userId);
         }
-        if (StringUtils.hasText(user.getLlmCloudModel())) {
-            return user.getLlmCloudModel().trim();
-        }
-        return cloudLlmProperties.resolveDefaultModel();
+        return cloudLlmModelService.resolveSelectedModelForUser(user.getLlmCloudModel(), userId);
     }
     private String resolveUsedModel(String provider, String localModel, String cloudModel) {
         if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
@@ -1012,13 +1036,18 @@ public class WordServiceImpl implements WordService {
                         null,
                         "\u4e91\u7aefAPI\u672a\u914d\u7f6e\u5b8c\u6210\uff0c\u8bf7\u5728\u201c\u6211\u7684\u8d44\u6599\u201d\u5b8c\u6210\u914d\u7f6e\u540e\u70b9\u51fb\u201c\u91cd\u8bd5AI\u751f\u6210\u201d",
                         null))
+                .sentenceStatus("fallback")
                 .synonyms(Collections.emptyList())
+                .synonymStatus("fallback")
                 .mnemonic(new WordDetailResponse.Mnemonic(null, null))
+                .mnemonicStatus("fallback")
                 .smartExplain(null)
                 .grammarUsage(null)
                 .explainStatus("fallback")
                 .build();
-    }    private WordDetailResponse parseCachedWordDetail(Object cached) {
+    }
+
+    private WordDetailResponse parseCachedWordDetail(Object cached) {
         if (cached == null) {
             return null;
         }
@@ -1042,6 +1071,8 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
 
 
 

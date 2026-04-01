@@ -121,6 +121,7 @@ public class WordController {
         if (isCloudUnavailable(provider, cloudModel)) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
+        llmAsyncService.markWordContentPending(req.getWordId(), wordType.code(), style, true);
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
         llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerate");
         llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel);
@@ -150,6 +151,7 @@ public class WordController {
         if (isCloudUnavailable(provider, cloudModel)) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
+        llmAsyncService.markWordExplainPending(req.getWordId(), wordType.code(), style, true);
         wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
         llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerateExplain");
         llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel);
@@ -187,6 +189,10 @@ public class WordController {
                 .eq(WordMeta::getWordType, normalizedWordType.code())
                 .and(w -> w.eq(WordMeta::getGenStatus, "pending")
                         .or()
+                        .eq(WordMeta::getGenStatus, "partial")
+                        .or()
+                        .eq(WordMeta::getGenStatus, "fallback")
+                        .or()
                         .eq(WordMeta::getAiExplainStatus, "pending")
                         .or()
                         .eq(WordMeta::getAiExplainStatus, "fallback"))
@@ -202,6 +208,8 @@ public class WordController {
             }
         }
         for (Long pendingWordId : pendingWordIds) {
+            llmAsyncService.markWordContentPending(pendingWordId, normalizedWordType.code(), style, false);
+            llmAsyncService.markWordExplainPending(pendingWordId, normalizedWordType.code(), style, false);
             wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());
             llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.retryPending");
             llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel);
@@ -310,5 +318,3 @@ public class WordController {
                 || !StringUtils.hasText(cloudLlmProperties.getApiKey());
     }
 }
-
-

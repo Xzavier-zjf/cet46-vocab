@@ -12,6 +12,7 @@ import com.cet46.vocab.llm.OllamaClient;
 import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.llm.PromptTemplate;
 import com.cet46.vocab.mapper.UserMapper;
+import com.cet46.vocab.service.CloudLlmModelService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -41,19 +42,22 @@ public class AssistantController {
     private final CloudLlmProperties cloudLlmProperties;
     private final ObjectMapper objectMapper;
     private final LlmUsageTracker llmUsageTracker;
+    private final CloudLlmModelService cloudLlmModelService;
 
     public AssistantController(UserMapper userMapper,
                                OllamaClient ollamaClient,
                                CloudLlmClient cloudLlmClient,
                                CloudLlmProperties cloudLlmProperties,
                                ObjectMapper objectMapper,
-                               LlmUsageTracker llmUsageTracker) {
+                               LlmUsageTracker llmUsageTracker,
+                               CloudLlmModelService cloudLlmModelService) {
         this.userMapper = userMapper;
         this.ollamaClient = ollamaClient;
         this.cloudLlmClient = cloudLlmClient;
         this.cloudLlmProperties = cloudLlmProperties;
         this.objectMapper = objectMapper;
         this.llmUsageTracker = llmUsageTracker;
+        this.cloudLlmModelService = cloudLlmModelService;
     }
 
     @PostMapping("/chat")
@@ -623,5 +627,7 @@ public class AssistantController {
     private record GeneratedAnswer(String content, int continuationRounds) {
     }
 }
+
+
 
 

@@ -62,6 +62,15 @@
         <p>{{ detail.chinese || '-' }}</p>
       </section>
 
+      <section class="item-status-card">
+        <h3>Item Status</h3>
+        <div class="item-status-grid">
+          <span>Sentence: {{ sectionStatusLabel(sentenceSectionStatus) }}</span>
+          <span>Synonym: {{ sectionStatusLabel(synonymSectionStatus) }}</span>
+          <span>Mnemonic: {{ sectionStatusLabel(mnemonicSectionStatus) }}</span>
+        </div>
+      </section>
+
       <WordMetaPanel
         :llm-content="detail.llmContent"
         :gen-status="displayGenStatus"
@@ -131,6 +140,9 @@ const statusText = computed(() => {
   return '加入学习'
 })
 const displayGenStatus = computed(() => detail.llmContent?.genStatus || 'pending')
+const sentenceSectionStatus = computed(() => normalizeSectionStatus(detail.llmContent?.sentenceStatus, !!(detail.llmContent?.sentence?.sentenceEn || detail.llmContent?.sentence?.sentenceZh), displayGenStatus.value))
+const synonymSectionStatus = computed(() => normalizeSectionStatus(detail.llmContent?.synonymStatus, Array.isArray(detail.llmContent?.synonyms) && detail.llmContent.synonyms.length > 0, displayGenStatus.value))
+const mnemonicSectionStatus = computed(() => normalizeSectionStatus(detail.llmContent?.mnemonicStatus, !!(detail.llmContent?.mnemonic?.mnemonic || detail.llmContent?.mnemonic?.rootAnalysis), displayGenStatus.value))
 const fromWordsRoute = computed(() => {
   const from = route.query.from
   if (typeof from !== 'string') return ''
@@ -140,6 +152,21 @@ const fromWordsRoute = computed(() => {
 
 const validWordType = (type) => type === 'cet4' || type === 'cet6'
 const validWordId = (id) => Number.isInteger(Number(id)) && Number(id) > 0
+
+const normalizeSectionStatus = (rawStatus, hasContent, genStatus) => {
+  const normalized = String(rawStatus || '').trim().toLowerCase()
+  if (normalized === 'pending' || normalized === 'full' || normalized === 'fallback') return normalized
+  if (hasContent) return 'full'
+  const gen = String(genStatus || '').trim().toLowerCase()
+  if (gen === 'pending' || gen === 'partial') return 'pending'
+  return 'fallback'
+}
+
+const sectionStatusLabel = (status) => {
+  if (status === 'full') return 'done'
+  return status === 'pending' ? 'generating' : 'fallback'
+}
+
 
 const stopPolling = () => {
   if (pollTimer.value) {
@@ -336,7 +363,10 @@ const triggerGenerateTask = async (showToast = false) => {
     pollStalled.value = false
     detail.llmContent = {
       ...(detail.llmContent || {}),
-      genStatus: 'pending'
+      genStatus: 'pending',
+      sentence: {},
+      synonyms: [],
+      mnemonic: {}
     }
     startPollingIfNeeded('pending')
     if (showToast) {
@@ -392,7 +422,9 @@ const triggerExplainTask = async (showWarn = true) => {
     explainPolling.value = true
     detail.llmContent = {
       ...(detail.llmContent || {}),
-      explainStatus: 'pending'
+      explainStatus: 'pending',
+      smartExplain: '',
+      grammarUsage: ''
     }
     startPollingIfNeeded('pending')
   } catch (error) {
@@ -526,6 +558,28 @@ onUnmounted(() => {
   line-height: 1.8;
 }
 
+
+.item-status-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 12px 20px;
+}
+
+.item-status-card h3 {
+  margin: 0 0 8px;
+  color: var(--color-primary-strong);
+  font-size: 14px;
+}
+
+.item-status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
 @media (max-width: 768px) {
   .top-row {
     flex-direction: column;
@@ -542,3 +596,4 @@ onUnmounted(() => {
   }
 }
 </style>
+

@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LocalModelItemResponse {
     private String name;
+    private String displayName;
     private Long sizeBytes;
     private String modifiedAt;
     private String digest;
