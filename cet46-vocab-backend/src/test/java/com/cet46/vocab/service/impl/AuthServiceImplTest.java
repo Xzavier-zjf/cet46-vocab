@@ -107,6 +107,7 @@ class AuthServiceImplTest {
         when(userMapper.selectByUsername("tom")).thenReturn(user);
         when(passwordEncoder.matches("plain-pwd", "encoded")).thenReturn(true);
         when(jwtUtils.generateToken(10L, "USER")).thenReturn("jwt-token");
+        when(jwtUtils.getExpireDays()).thenReturn(14L);
         when(redisTemplate.opsForValue()).thenReturn(valueOperations);
 
         Map<String, Object> result = authService.login(req);
@@ -114,7 +115,7 @@ class AuthServiceImplTest {
         assertEquals("jwt-token", result.get("token"));
         assertEquals(10L, result.get("userId"));
         assertEquals("Tom", result.get("nickname"));
-        verify(valueOperations).set(eq("token:user:10"), eq("jwt-token"), eq(7L), eq(TimeUnit.DAYS));
+        verify(valueOperations).set(eq("token:user:10"), eq("jwt-token"), eq(14L), eq(TimeUnit.DAYS));
     }
 
     @Test

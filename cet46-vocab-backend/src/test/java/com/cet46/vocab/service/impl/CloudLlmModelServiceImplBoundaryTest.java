@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyLong;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -123,5 +124,36 @@ class CloudLlmModelServiceImplBoundaryTest {
         );
 
         assertEquals("modelKey length must be <= 128", ex.getMessage());
+    }
+
+    @Test
+    void updatePrivateShouldDeleteProviderCredentialWhenClearApiKeyTrue() {
+        CloudLlmModel existing = CloudLlmModel.builder()
+                .id(10L)
+                .visibility("user-private")
+                .ownerUserId(9L)
+                .provider("bailian")
+                .modelKey("qwen3.5-flash")
+                .displayName("old")
+                .enabled(true)
+                .build();
+
+        CloudLlmModel after = CloudLlmModel.builder()
+                .id(10L)
+                .visibility("user-private")
+                .ownerUserId(9L)
+                .provider("bailian")
+                .modelKey("qwen3.5-flash")
+                .displayName("old")
+                .enabled(true)
+                .build();
+
+        when(cloudLlmModelMapper.selectById(10L)).thenReturn(existing, after);
+        when(cloudLlmModelMapper.updateById(any(CloudLlmModel.class))).thenReturn(1);
+
+        service.updatePrivate(9L, 10L, "bailian", "qwen3.5-flash", "old", null, null, null, null, true, null);
+
+        verify(cloudLlmProviderCredentialMapper).delete(any());
+        verify(cloudLlmProviderCredentialMapper, never()).insert(any());
     }
 }

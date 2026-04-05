@@ -195,7 +195,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
                 .build();
 
         applyApiKeyChanges(entity, apiKey, clearApiKey);
-        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey);
+        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey, clearApiKey);
 
         try {
             cloudLlmModelMapper.insert(entity);
@@ -247,7 +247,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         existing.setOwnerUserId(0L);
 
         applyApiKeyChanges(existing, apiKey, clearApiKey);
-        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey);
+        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey, clearApiKey);
 
         try {
             cloudLlmModelMapper.updateById(existing);
@@ -302,7 +302,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
                 .build();
 
         applyApiKeyChanges(entity, apiKey, clearApiKey);
-        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey);
+        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey, clearApiKey);
 
         try {
             cloudLlmModelMapper.insert(entity);
@@ -344,7 +344,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         existing.setOwnerUserId(ownerUserId);
 
         applyApiKeyChanges(existing, apiKey, clearApiKey);
-        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey);
+        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey, clearApiKey);
 
         try {
             cloudLlmModelMapper.updateById(existing);
@@ -504,8 +504,12 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         model.setApiKeyMask(cloudApiKeyCipher.mask(trimmed));
     }
 
-    private void syncProviderCredential(String visibility, Long ownerUserId, String provider, String apiKey) {
-        if (!StringUtils.hasText(apiKey) || !StringUtils.hasText(provider)) {
+    private void syncProviderCredential(String visibility,
+                                        Long ownerUserId,
+                                        String provider,
+                                        String apiKey,
+                                        Boolean clearApiKey) {
+        if (!StringUtils.hasText(provider)) {
             return;
         }
         String normalizedProvider = provider.trim().toLowerCase(Locale.ROOT);
@@ -516,10 +520,21 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         if (normalizedOwnerUserId == null || normalizedOwnerUserId <= 0 && VISIBILITY_USER_PRIVATE.equals(normalizedVisibility)) {
             return;
         }
-        String trimmedKey = apiKey.trim();
-        if (!StringUtils.hasText(trimmedKey)) {
+
+        if (Boolean.TRUE.equals(clearApiKey) || (apiKey != null && !StringUtils.hasText(apiKey.trim()))) {
+            cloudLlmProviderCredentialMapper.delete(
+                    new LambdaQueryWrapper<CloudLlmProviderCredential>()
+                            .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
+                            .eq(CloudLlmProviderCredential::getOwnerUserId, normalizedOwnerUserId)
+                            .eq(CloudLlmProviderCredential::getProvider, normalizedProvider)
+            );
             return;
         }
+
+        if (apiKey == null) {
+            return;
+        }
+        String trimmedKey = apiKey.trim();
         CloudLlmProviderCredential existing = cloudLlmProviderCredentialMapper.selectOne(
                 new LambdaQueryWrapper<CloudLlmProviderCredential>()
                         .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)

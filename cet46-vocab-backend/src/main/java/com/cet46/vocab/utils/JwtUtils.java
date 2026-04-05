@@ -35,7 +35,7 @@ public class JwtUtils {
 
     public String generateToken(Long userId, String role) {
         Instant now = Instant.now();
-        Instant expireAt = now.plus(expireDays, ChronoUnit.DAYS);
+        Instant expireAt = now.plus(getExpireDays(), ChronoUnit.DAYS);
         return Jwts.builder()
                 .setSubject(String.valueOf(userId))
                 .claim("role", role)
@@ -43,6 +43,13 @@ public class JwtUtils {
                 .setExpiration(Date.from(expireAt))
                 .signWith(signingKey, SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    public long getExpireDays() {
+        if (expireDays == null || expireDays < 1) {
+            return 7L;
+        }
+        return expireDays.longValue();
     }
 
     public Long getUserIdFromToken(String token) {

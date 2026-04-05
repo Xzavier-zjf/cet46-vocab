@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.util.List;
+import java.util.Locale;
 
 @Component
 public class CloudLlmRuntimeConfigResolver {
@@ -181,13 +182,26 @@ public class CloudLlmRuntimeConfigResolver {
         if (!StringUtils.hasText(provider) || !StringUtils.hasText(visibility) || ownerUserId == null) {
             return null;
         }
+        String normalizedProvider = provider.trim().toLowerCase(Locale.ROOT);
+        String normalizedVisibility = visibility.trim();
         CloudLlmProviderCredential credential = cloudLlmProviderCredentialMapper.selectOne(
                 new LambdaQueryWrapper<CloudLlmProviderCredential>()
-                        .eq(CloudLlmProviderCredential::getProvider, provider)
-                        .eq(CloudLlmProviderCredential::getVisibility, visibility)
+                        .eq(CloudLlmProviderCredential::getProvider, normalizedProvider)
+                        .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
                         .eq(CloudLlmProviderCredential::getOwnerUserId, ownerUserId)
                         .last("LIMIT 1")
         );
+        if (credential == null
+                && CloudLlmModelService.VISIBILITY_GLOBAL.equals(normalizedVisibility)
+                && ownerUserId == 0L) {
+            credential = cloudLlmProviderCredentialMapper.selectOne(
+                    new LambdaQueryWrapper<CloudLlmProviderCredential>()
+                            .eq(CloudLlmProviderCredential::getProvider, normalizedProvider)
+                            .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
+                            .isNull(CloudLlmProviderCredential::getOwnerUserId)
+                            .last("LIMIT 1")
+            );
+        }
         if (credential == null) {
             return null;
         }

@@ -2,6 +2,7 @@ package com.cet46.vocab.service;
 
 import com.cet46.vocab.common.PageResult;
 import com.cet46.vocab.config.SecurityRbacProperties;
+import com.cet46.vocab.security.GlobalCloudModelPermissions;
 import com.cet46.vocab.security.PrivateCloudModelPermissions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -108,6 +109,45 @@ class RolePermissionServiceTest {
         verify(jdbcTemplate, never()).update(
                 eq("INSERT INTO rbac_role_permission_audit(actor_user_id, role_code, before_permissions, after_permissions) VALUES (?, ?, ?, ?)"),
                 any(), any(), any(), any()
+        );
+    }
+
+    @Test
+    void updateRolePermissionsShouldAcceptGlobalCloudModelPermissions() {
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?"),
+                eq(Integer.class),
+                eq("rbac_role_permission")
+        )).thenReturn(1);
+        when(jdbcTemplate.queryForList(anyString(), ArgumentMatchers.<Object>any(), ArgumentMatchers.<Object>any()))
+                .thenReturn(List.of());
+
+        rolePermissionService.updateRolePermissions(
+                Map.of(
+                        "ADMIN",
+                        List.of(
+                                GlobalCloudModelPermissions.CREATE,
+                                GlobalCloudModelPermissions.EDIT,
+                                GlobalCloudModelPermissions.DELETE
+                        )
+                ),
+                99L
+        );
+
+        verify(jdbcTemplate).update(
+                "INSERT INTO rbac_role_permission(role_code, permission_code) VALUES (?, ?)",
+                "ADMIN",
+                GlobalCloudModelPermissions.CREATE
+        );
+        verify(jdbcTemplate).update(
+                "INSERT INTO rbac_role_permission(role_code, permission_code) VALUES (?, ?)",
+                "ADMIN",
+                GlobalCloudModelPermissions.EDIT
+        );
+        verify(jdbcTemplate).update(
+                "INSERT INTO rbac_role_permission(role_code, permission_code) VALUES (?, ?)",
+                "ADMIN",
+                GlobalCloudModelPermissions.DELETE
         );
     }
 

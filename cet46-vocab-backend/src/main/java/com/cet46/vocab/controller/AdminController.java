@@ -22,6 +22,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -164,6 +165,7 @@ public class AdminController {
     }
 
     @PostMapping("/cloud-models")
+    @PreAuthorize("hasAuthority(T(com.cet46.vocab.security.GlobalCloudModelPermissions).CREATE)")
     public Result<CloudModelItem> createCloudModel(@Valid @RequestBody CloudModelSaveRequest req) {
         CloudLlmModel saved = cloudLlmModelService.create(
                 req.getProvider(),
@@ -181,6 +183,7 @@ public class AdminController {
     }
 
     @PutMapping("/cloud-models/{id}")
+    @PreAuthorize("hasAuthority(T(com.cet46.vocab.security.GlobalCloudModelPermissions).EDIT)")
     public Result<CloudModelItem> updateCloudModel(@PathVariable("id") Long id,
                                                     @Valid @RequestBody CloudModelSaveRequest req) {
         CloudLlmModel saved = cloudLlmModelService.update(
@@ -200,12 +203,14 @@ public class AdminController {
     }
 
     @PutMapping("/cloud-models/{id}/default")
+    @PreAuthorize("hasAuthority(T(com.cet46.vocab.security.GlobalCloudModelPermissions).EDIT)")
     public Result<CloudModelItem> setDefaultCloudModel(@PathVariable("id") Long id) {
         CloudLlmModel saved = cloudLlmModelService.setDefault(id);
         return Result.success(toCloudModelItem(saved));
     }
 
     @DeleteMapping("/cloud-models/{id}")
+    @PreAuthorize("hasAuthority(T(com.cet46.vocab.security.GlobalCloudModelPermissions).DELETE)")
     public Result<Void> deleteCloudModel(@PathVariable("id") Long id) {
         cloudLlmModelService.delete(id);
         return Result.success();
@@ -400,8 +405,6 @@ public class AdminController {
         private String mnemonic;
     }
 }
-
-
 
 
 

@@ -82,7 +82,7 @@ public class AuthServiceImpl implements AuthService {
 
         String token = jwtUtils.generateToken(user.getId(), user.getRole());
         String redisKey = "token:user:" + user.getId();
-        redisTemplate.opsForValue().set(redisKey, token, 7, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(redisKey, token, jwtUtils.getExpireDays(), TimeUnit.DAYS);
 
         Map<String, Object> result = new HashMap<>();
         result.put("token", token);
@@ -105,5 +105,4 @@ public class AuthServiceImpl implements AuthService {
         redisTemplate.delete("token:user:" + userId);
     }
 }
-
 
