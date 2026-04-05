@@ -3,7 +3,10 @@ package com.cet46.vocab.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.entity.CloudLlmModel;
+import com.cet46.vocab.entity.CloudLlmProviderCredential;
+import com.cet46.vocab.llm.CloudApiKeyCipher;
 import com.cet46.vocab.mapper.CloudLlmModelMapper;
+import com.cet46.vocab.mapper.CloudLlmProviderCredentialMapper;
 import com.cet46.vocab.service.CloudLlmModelService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,23 +17,29 @@ import org.springframework.util.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 
 @Service
 public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
     private static final String DEFAULT_PROVIDER = "bailian";
+    private static final String DEFAULT_PROTOCOL = "openai-compatible";
 
     private final CloudLlmModelMapper cloudLlmModelMapper;
+    private final CloudLlmProviderCredentialMapper cloudLlmProviderCredentialMapper;
     private final CloudLlmProperties cloudLlmProperties;
     private final JdbcTemplate jdbcTemplate;
+    private final CloudApiKeyCipher cloudApiKeyCipher;
 
     public CloudLlmModelServiceImpl(CloudLlmModelMapper cloudLlmModelMapper,
+                                    CloudLlmProviderCredentialMapper cloudLlmProviderCredentialMapper,
                                     CloudLlmProperties cloudLlmProperties,
-                                    JdbcTemplate jdbcTemplate) {
+                                    JdbcTemplate jdbcTemplate,
+                                    CloudApiKeyCipher cloudApiKeyCipher) {
         this.cloudLlmModelMapper = cloudLlmModelMapper;
+        this.cloudLlmProviderCredentialMapper = cloudLlmProviderCredentialMapper;
         this.cloudLlmProperties = cloudLlmProperties;
         this.jdbcTemplate = jdbcTemplate;
+        this.cloudApiKeyCipher = cloudApiKeyCipher;
     }
 
     @Override
@@ -156,7 +165,16 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public CloudLlmModel create(String provider, String modelKey, String displayName, Boolean enabled, Boolean isDefault) {
+    public CloudLlmModel create(String provider,
+                                String modelKey,
+                                String displayName,
+                                String baseUrl,
+                                String path,
+                                String protocol,
+                                String apiKey,
+                                Boolean clearApiKey,
+                                Boolean enabled,
+                                Boolean isDefault) {
         String normalizedModelKey = requireModelKey(modelKey);
         String normalizedDisplayName = normalizeDisplayName(displayName, normalizedModelKey);
         boolean enabledFlag = enabled == null || enabled;
@@ -166,12 +184,18 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
                 .provider(normalizeProvider(provider))
                 .modelKey(normalizedModelKey)
                 .displayName(normalizedDisplayName)
+                .baseUrl(normalizeNullable(baseUrl, 255, "baseUrl length must be <= 255"))
+                .path(normalizeNullable(path, 128, "path length must be <= 128"))
+                .protocol(normalizeProtocol(protocol))
                 .enabled(enabledFlag)
                 .isDefault(defaultFlag)
                 .visibility(VISIBILITY_GLOBAL)
                 .ownerUserId(0L)
                 .tenantId(null)
                 .build();
+
+        applyApiKeyChanges(entity, apiKey, clearApiKey);
+        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey);
 
         try {
             cloudLlmModelMapper.insert(entity);
@@ -190,7 +214,17 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public CloudLlmModel update(Long id, String provider, String modelKey, String displayName, Boolean enabled, Boolean isDefault) {
+    public CloudLlmModel update(Long id,
+                                String provider,
+                                String modelKey,
+                                String displayName,
+                                String baseUrl,
+                                String path,
+                                String protocol,
+                                String apiKey,
+                                Boolean clearApiKey,
+                                Boolean enabled,
+                                Boolean isDefault) {
         CloudLlmModel existing = requireById(id);
         if (!isGlobal(existing)) {
             throw new IllegalArgumentException("only global model can be updated by admin api");
@@ -203,11 +237,17 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
         existing.setModelKey(normalizedModelKey);
         existing.setDisplayName(normalizedDisplayName);
+        existing.setBaseUrl(normalizeNullable(baseUrl, 255, "baseUrl length must be <= 255"));
+        existing.setPath(normalizeNullable(path, 128, "path length must be <= 128"));
+        existing.setProtocol(normalizeProtocol(protocol));
         existing.setEnabled(enabledFlag);
         existing.setIsDefault(defaultFlag);
         existing.setProvider(normalizeProvider(provider));
         existing.setVisibility(VISIBILITY_GLOBAL);
         existing.setOwnerUserId(0L);
+
+        applyApiKeyChanges(existing, apiKey, clearApiKey);
+        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey);
 
         try {
             cloudLlmModelMapper.updateById(existing);
@@ -230,7 +270,16 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public CloudLlmModel createPrivate(Long ownerUserId, String modelKey, String displayName, Boolean enabled) {
+    public CloudLlmModel createPrivate(Long ownerUserId,
+                                       String provider,
+                                       String modelKey,
+                                       String displayName,
+                                       String baseUrl,
+                                       String path,
+                                       String protocol,
+                                       String apiKey,
+                                       Boolean clearApiKey,
+                                       Boolean enabled) {
         if (ownerUserId == null || ownerUserId <= 0) {
             throw new IllegalArgumentException("ownerUserId is required");
         }
@@ -239,15 +288,21 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         boolean enabledFlag = enabled == null || enabled;
 
         CloudLlmModel entity = CloudLlmModel.builder()
-                .provider(DEFAULT_PROVIDER)
+                .provider(normalizeProvider(StringUtils.hasText(provider) ? provider : DEFAULT_PROVIDER))
                 .modelKey(normalizedModelKey)
                 .displayName(normalizedDisplayName)
+                .baseUrl(normalizeNullable(baseUrl, 255, "baseUrl length must be <= 255"))
+                .path(normalizeNullable(path, 128, "path length must be <= 128"))
+                .protocol(normalizeProtocol(protocol))
                 .enabled(enabledFlag)
                 .isDefault(false)
                 .visibility(VISIBILITY_USER_PRIVATE)
                 .ownerUserId(ownerUserId)
                 .tenantId(null)
                 .build();
+
+        applyApiKeyChanges(entity, apiKey, clearApiKey);
+        syncProviderCredential(entity.getVisibility(), entity.getOwnerUserId(), entity.getProvider(), apiKey);
 
         try {
             cloudLlmModelMapper.insert(entity);
@@ -260,19 +315,36 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public CloudLlmModel updatePrivate(Long ownerUserId, Long id, String modelKey, String displayName, Boolean enabled) {
+    public CloudLlmModel updatePrivate(Long ownerUserId,
+                                       Long id,
+                                       String provider,
+                                       String modelKey,
+                                       String displayName,
+                                       String baseUrl,
+                                       String path,
+                                       String protocol,
+                                       String apiKey,
+                                       Boolean clearApiKey,
+                                       Boolean enabled) {
         CloudLlmModel existing = requireOwnedPrivate(ownerUserId, id);
         String normalizedModelKey = requireModelKey(modelKey);
         String normalizedDisplayName = normalizeDisplayName(displayName, normalizedModelKey);
 
+        existing.setProvider(normalizeProvider(StringUtils.hasText(provider) ? provider : existing.getProvider()));
         existing.setModelKey(normalizedModelKey);
         existing.setDisplayName(normalizedDisplayName);
+        existing.setBaseUrl(normalizeNullable(baseUrl, 255, "baseUrl length must be <= 255"));
+        existing.setPath(normalizeNullable(path, 128, "path length must be <= 128"));
+        existing.setProtocol(normalizeProtocol(protocol));
         if (enabled != null) {
             existing.setEnabled(enabled);
         }
         existing.setIsDefault(false);
         existing.setVisibility(VISIBILITY_USER_PRIVATE);
         existing.setOwnerUserId(ownerUserId);
+
+        applyApiKeyChanges(existing, apiKey, clearApiKey);
+        syncProviderCredential(existing.getVisibility(), existing.getOwnerUserId(), existing.getProvider(), apiKey);
 
         try {
             cloudLlmModelMapper.updateById(existing);
@@ -413,6 +485,64 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         return VISIBILITY_GLOBAL.equals(normalizeVisibility(item == null ? null : item.getVisibility()));
     }
 
+    private void applyApiKeyChanges(CloudLlmModel model, String apiKey, Boolean clearApiKey) {
+        if (Boolean.TRUE.equals(clearApiKey)) {
+            model.setApiKeyCiphertext(null);
+            model.setApiKeyMask(null);
+            return;
+        }
+        if (apiKey == null) {
+            return;
+        }
+        String trimmed = apiKey.trim();
+        if (!StringUtils.hasText(trimmed)) {
+            model.setApiKeyCiphertext(null);
+            model.setApiKeyMask(null);
+            return;
+        }
+        model.setApiKeyCiphertext(cloudApiKeyCipher.encrypt(trimmed));
+        model.setApiKeyMask(cloudApiKeyCipher.mask(trimmed));
+    }
+
+    private void syncProviderCredential(String visibility, Long ownerUserId, String provider, String apiKey) {
+        if (!StringUtils.hasText(apiKey) || !StringUtils.hasText(provider)) {
+            return;
+        }
+        String normalizedProvider = provider.trim().toLowerCase(Locale.ROOT);
+        String normalizedVisibility = normalizeVisibility(visibility);
+        Long normalizedOwnerUserId = VISIBILITY_USER_PRIVATE.equals(normalizedVisibility)
+                ? ownerUserId
+                : 0L;
+        if (normalizedOwnerUserId == null || normalizedOwnerUserId <= 0 && VISIBILITY_USER_PRIVATE.equals(normalizedVisibility)) {
+            return;
+        }
+        String trimmedKey = apiKey.trim();
+        if (!StringUtils.hasText(trimmedKey)) {
+            return;
+        }
+        CloudLlmProviderCredential existing = cloudLlmProviderCredentialMapper.selectOne(
+                new LambdaQueryWrapper<CloudLlmProviderCredential>()
+                        .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
+                        .eq(CloudLlmProviderCredential::getOwnerUserId, normalizedOwnerUserId)
+                        .eq(CloudLlmProviderCredential::getProvider, normalizedProvider)
+                        .last("LIMIT 1")
+        );
+        if (existing == null) {
+            CloudLlmProviderCredential entity = CloudLlmProviderCredential.builder()
+                    .provider(normalizedProvider)
+                    .visibility(normalizedVisibility)
+                    .ownerUserId(normalizedOwnerUserId)
+                    .apiKeyCiphertext(cloudApiKeyCipher.encrypt(trimmedKey))
+                    .apiKeyMask(cloudApiKeyCipher.mask(trimmedKey))
+                    .build();
+            cloudLlmProviderCredentialMapper.insert(entity);
+            return;
+        }
+        existing.setApiKeyCiphertext(cloudApiKeyCipher.encrypt(trimmedKey));
+        existing.setApiKeyMask(cloudApiKeyCipher.mask(trimmedKey));
+        cloudLlmProviderCredentialMapper.updateById(existing);
+    }
+
     private String normalizeProvider(String provider) {
         if (!StringUtils.hasText(provider)) {
             return cloudLlmProperties.resolveDefaultProvider();
@@ -426,6 +556,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         }
         return value;
     }
+
     private String normalizeVisibility(String visibility) {
         if (!StringUtils.hasText(visibility)) {
             return VISIBILITY_GLOBAL;
@@ -462,8 +593,26 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         }
         return value;
     }
+
+    private String normalizeNullable(String value, int max, String errorMsg) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String normalized = value.trim();
+        if (normalized.length() > max) {
+            throw new IllegalArgumentException(errorMsg);
+        }
+        return normalized;
+    }
+
+    private String normalizeProtocol(String protocol) {
+        if (!StringUtils.hasText(protocol)) {
+            return DEFAULT_PROTOCOL;
+        }
+        String value = protocol.trim().toLowerCase(Locale.ROOT);
+        if (value.length() > 32) {
+            throw new IllegalArgumentException("protocol length must be <= 32");
+        }
+        return value;
+    }
 }
-
-
-
-

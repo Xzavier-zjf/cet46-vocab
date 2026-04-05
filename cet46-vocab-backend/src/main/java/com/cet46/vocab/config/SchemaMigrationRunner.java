@@ -33,11 +33,14 @@ public class SchemaMigrationRunner {
         ensureUserLlmProviderColumn();
         ensureUserLlmLocalModelColumn();
         ensureUserLlmCloudModelColumn();
+        ensureUserWordProgressWordTypeColumn();
         ensureWordMetaAiExplainColumns();
         ensureWordImportBatchTables();
         ensureCloudLlmModelTable();
         ensureCloudLlmModelIsolationColumns();
+        ensureCloudLlmModelProviderConfigColumns();
         ensureCloudLlmModelUniqueIndex();
+        ensureCloudLlmProviderCredentialTable();
         ensureRolePermissionTables();
         seedRolePermissionsFromConfig();
         seedCloudLlmModelsFromConfig();
@@ -104,6 +107,38 @@ public class SchemaMigrationRunner {
             log.info("added user.llm_cloud_model column");
         } catch (Exception ex) {
             log.error("failed to ensure user.llm_cloud_model column", ex);
+        }
+    }
+
+    private void ensureUserWordProgressWordTypeColumn() {
+        try {
+            Integer exists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM information_schema.COLUMNS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_word_progress' AND COLUMN_NAME = 'word_type'",
+                    Integer.class
+            );
+            if (exists == null || exists == 0) {
+                jdbcTemplate.execute(
+                        "ALTER TABLE user_word_progress " +
+                                "ADD COLUMN word_type VARCHAR(10) NOT NULL DEFAULT 'cet4' AFTER word_id"
+                );
+                log.info("added user_word_progress.word_type column");
+            }
+
+            Integer indexExists = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM information_schema.STATISTICS " +
+                            "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'user_word_progress' " +
+                            "AND INDEX_NAME = 'idx_user_word_progress_user_word_type'",
+                    Integer.class
+            );
+            if (indexExists == null || indexExists == 0) {
+                jdbcTemplate.execute(
+                        "ALTER TABLE user_word_progress " +
+                                "ADD INDEX idx_user_word_progress_user_word_type (user_id, word_type, word_id)"
+                );
+            }
+        } catch (Exception ex) {
+            log.error("failed to ensure user_word_progress.word_type column", ex);
         }
     }
 
@@ -245,6 +280,33 @@ public class SchemaMigrationRunner {
         }
     }
 
+    private void ensureCloudLlmModelProviderConfigColumns() {
+        try {
+            ensureCloudLlmModelColumn("base_url", "ALTER TABLE cloud_llm_model ADD COLUMN base_url VARCHAR(255) NULL AFTER model_key");
+            ensureCloudLlmModelColumn("path", "ALTER TABLE cloud_llm_model ADD COLUMN path VARCHAR(128) NULL AFTER base_url");
+            ensureCloudLlmModelColumn("protocol", "ALTER TABLE cloud_llm_model ADD COLUMN protocol VARCHAR(32) NOT NULL DEFAULT 'openai-compatible' AFTER path");
+            ensureCloudLlmModelColumn("api_key_ciphertext", "ALTER TABLE cloud_llm_model ADD COLUMN api_key_ciphertext TEXT NULL AFTER protocol");
+            ensureCloudLlmModelColumn("api_key_mask", "ALTER TABLE cloud_llm_model ADD COLUMN api_key_mask VARCHAR(32) NULL AFTER api_key_ciphertext");
+            ensureCloudLlmModelColumn("extra_headers_json", "ALTER TABLE cloud_llm_model ADD COLUMN extra_headers_json TEXT NULL AFTER api_key_mask");
+            jdbcTemplate.update("UPDATE cloud_llm_model SET protocol = 'openai-compatible' WHERE protocol IS NULL OR protocol = ''");
+        } catch (Exception ex) {
+            log.error("failed to ensure cloud_llm_model provider config columns", ex);
+        }
+    }
+
+    private void ensureCloudLlmModelColumn(String columnName, String alterSql) {
+        Integer exists = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM information_schema.COLUMNS " +
+                        "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cloud_llm_model' AND COLUMN_NAME = ?",
+                Integer.class,
+                columnName
+        );
+        if (exists == null || exists == 0) {
+            jdbcTemplate.execute(alterSql);
+            log.info("added cloud_llm_model.{} column", columnName);
+        }
+    }
+
     private void ensureCloudLlmModelUniqueIndex() {
         try {
             Integer oldUk = jdbcTemplate.queryForObject(
@@ -266,6 +328,32 @@ public class SchemaMigrationRunner {
             }
         } catch (Exception ex) {
             log.error("failed to ensure cloud_llm_model unique index", ex);
+        }
+    }
+
+    private void ensureCloudLlmProviderCredentialTable() {
+        try {
+            jdbcTemplate.execute("""
+                    CREATE TABLE IF NOT EXISTS cloud_llm_provider_credential (
+                      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                      provider VARCHAR(32) NOT NULL,
+                      visibility VARCHAR(32) NOT NULL DEFAULT 'global',
+                      owner_user_id BIGINT NOT NULL DEFAULT 0,
+                      api_key_ciphertext TEXT NULL,
+                      api_key_mask VARCHAR(32) NULL,
+                      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                      UNIQUE KEY uk_cloud_llm_provider_credential_scope_provider (visibility, owner_user_id, provider)
+                    )
+                    """);
+            jdbcTemplate.update(
+                    "UPDATE cloud_llm_provider_credential SET visibility = 'global' WHERE visibility IS NULL OR visibility = ''"
+            );
+            jdbcTemplate.update(
+                    "UPDATE cloud_llm_provider_credential SET owner_user_id = 0 WHERE owner_user_id IS NULL"
+            );
+        } catch (Exception ex) {
+            log.error("failed to ensure cloud_llm_provider_credential table", ex);
         }
     }
 

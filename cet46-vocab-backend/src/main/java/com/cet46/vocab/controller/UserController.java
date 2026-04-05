@@ -117,6 +117,26 @@ public class UserController {
         return Result.success(userService.getCloudModels(userId));
     }
 
+
+    @PreAuthorize("hasRole('ADMIN') or hasAnyAuthority('PRIVATE_CLOUD_MODEL_CREATE', 'PRIVATE_CLOUD_MODEL_EDIT')")
+    @PostMapping("/llm/cloud-models/preview-health")
+    public Result<CloudLlmHealthResponse> previewCloudModelHealth(Authentication authentication,
+                                                                  @Valid @RequestBody CloudModelPreviewRequest req) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        Long userId = Long.valueOf(authentication.getPrincipal().toString());
+        return Result.success(userService.previewCloudLlmHealth(
+                userId,
+                req.getProvider(),
+                req.getModelKey(),
+                req.getBaseUrl(),
+                req.getPath(),
+                req.getProtocol(),
+                req.getApiKey()
+        ));
+    }
+
     @GetMapping("/llm/cloud-models/private")
     public Result<List<CloudModelItem>> listPrivateCloudModels(Authentication authentication) {
         if (authentication == null || authentication.getPrincipal() == null) {
@@ -137,7 +157,7 @@ public class UserController {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
         Long userId = Long.valueOf(authentication.getPrincipal().toString());
-        CloudLlmModel saved = userService.createPrivateCloudModel(userId, req.getModelKey(), req.getDisplayName(), req.getEnabled());
+        CloudLlmModel saved = userService.createPrivateCloudModel(userId, req.getProvider(), req.getModelKey(), req.getDisplayName(), req.getBaseUrl(), req.getPath(), req.getProtocol(), req.getApiKey(), req.getClearApiKey(), req.getEnabled());
         return Result.success(toCloudModelItem(saved));
     }
 
@@ -150,7 +170,7 @@ public class UserController {
             return Result.fail(ResultCode.UNAUTHORIZED);
         }
         Long userId = Long.valueOf(authentication.getPrincipal().toString());
-        CloudLlmModel saved = userService.updatePrivateCloudModel(userId, id, req.getModelKey(), req.getDisplayName(), null);
+        CloudLlmModel saved = userService.updatePrivateCloudModel(userId, id, req.getProvider(), req.getModelKey(), req.getDisplayName(), req.getBaseUrl(), req.getPath(), req.getProtocol(), req.getApiKey(), req.getClearApiKey(), null);
         return Result.success(toCloudModelItem(saved));
     }
 
@@ -166,7 +186,7 @@ public class UserController {
             return Result.fail(ResultCode.FORBIDDEN.getCode(), "forbidden");
         }
         Long userId = Long.valueOf(authentication.getPrincipal().toString());
-        CloudLlmModel saved = userService.updatePrivateCloudModel(userId, id, req.getModelKey(), req.getDisplayName(), req.getEnabled());
+        CloudLlmModel saved = userService.updatePrivateCloudModel(userId, id, req.getProvider(), req.getModelKey(), req.getDisplayName(), req.getBaseUrl(), req.getPath(), req.getProtocol(), req.getApiKey(), req.getClearApiKey(), req.getEnabled());
         return Result.success(toCloudModelItem(saved));
     }
 
@@ -233,6 +253,11 @@ public class UserController {
         item.setProvider(model.getProvider());
         item.setModelKey(model.getModelKey());
         item.setDisplayName(model.getDisplayName());
+        item.setBaseUrl(model.getBaseUrl());
+        item.setPath(model.getPath());
+        item.setProtocol(model.getProtocol());
+        item.setHasApiKey(org.springframework.util.StringUtils.hasText(model.getApiKeyCiphertext()));
+        item.setApiKeyMask(model.getApiKeyMask());
         item.setEnabled(Boolean.TRUE.equals(model.getEnabled()));
         item.setIsDefault(Boolean.TRUE.equals(model.getIsDefault()));
         item.setVisibility(model.getVisibility());
@@ -243,25 +268,54 @@ public class UserController {
     }
 
     @Data
+    private static class CloudModelPreviewRequest {
+        private String provider;
+        @NotBlank
+        private String modelKey;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private String apiKey;
+    }
+
+    @Data
     private static class CloudModelSaveRequest {
+        private String provider;
         @NotBlank
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private String apiKey;
+        private Boolean clearApiKey;
         private Boolean enabled;
     }
 
     @Data
     private static class CloudModelUpdateRequest {
+        private String provider;
         @NotBlank
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private String apiKey;
+        private Boolean clearApiKey;
     }
 
     @Data
     private static class CloudModelFullUpdateRequest {
+        private String provider;
         @NotBlank
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private String apiKey;
+        private Boolean clearApiKey;
         private Boolean enabled;
     }
 
@@ -277,6 +331,11 @@ public class UserController {
         private String provider;
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private Boolean hasApiKey;
+        private String apiKeyMask;
         private Boolean enabled;
         private Boolean isDefault;
         private String visibility;
@@ -285,3 +344,4 @@ public class UserController {
         private LocalDateTime updatedAt;
     }
 }
+

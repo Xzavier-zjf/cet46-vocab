@@ -731,7 +731,7 @@ onMounted(() => {
   padding: 10px 12px;
   text-align: left;
   cursor: pointer;
-  color: #2c3e50;
+  color: var(--color-text);
   display: flex;
   gap: 10px;
   align-items: center;
@@ -755,6 +755,21 @@ onMounted(() => {
   width: 20px;
   color: var(--color-muted);
   font-weight: 700;
+}
+
+:global(:root.dark) .option-btn {
+  background: var(--color-surface-soft);
+  border-color: var(--color-border);
+  color: var(--color-primary-strong);
+}
+
+:global(:root.dark) .option-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-accent) 34%, var(--color-border));
+  background: color-mix(in srgb, var(--color-surface-soft) 82%, var(--color-accent) 18%);
+}
+
+:global(:root.dark) .opt-id {
+  color: var(--color-muted-strong);
 }
 
 .fill-area {

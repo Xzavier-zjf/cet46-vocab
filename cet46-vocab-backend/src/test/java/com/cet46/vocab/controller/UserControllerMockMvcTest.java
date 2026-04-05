@@ -1,6 +1,7 @@
 package com.cet46.vocab.controller;
 
 import com.cet46.vocab.common.GlobalExceptionHandler;
+import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
 import com.cet46.vocab.entity.CloudLlmModel;
 import com.cet46.vocab.security.JwtAuthFilter;
 import com.cet46.vocab.service.UserService;
@@ -38,6 +39,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -118,7 +120,8 @@ class UserControllerMockMvcTest {
                 .visibility("USER_PRIVATE")
                 .ownerUserId(1001L)
                 .build();
-        when(userService.updatePrivateCloudModel(1001L, 9L, "qwen-max", "Qwen Max", true)).thenReturn(saved);
+        when(userService.updatePrivateCloudModel(1001L, 9L, null, "qwen-max", "Qwen Max", null, null, null, null, null, true))
+                .thenReturn(saved);
 
         String body = """
                 {
@@ -139,7 +142,19 @@ class UserControllerMockMvcTest {
                 .andExpect(jsonPath("$.data.enabled").value(true))
                 .andExpect(jsonPath("$.data.visibility").value("USER_PRIVATE"));
 
-        verify(userService).updatePrivateCloudModel(eq(1001L), eq(9L), eq("qwen-max"), eq("Qwen Max"), eq(true));
+        verify(userService).updatePrivateCloudModel(
+                eq(1001L),
+                eq(9L),
+                eq(null),
+                eq("qwen-max"),
+                eq("Qwen Max"),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(true)
+        );
     }
 
     @Test
@@ -163,6 +178,82 @@ class UserControllerMockMvcTest {
         verifyNoInteractions(userService);
     }
 
+    @Test
+    void previewCloudModelHealth_shouldForbidWithoutPermission() throws Exception {
+        String body = """
+                {
+                  "provider": "bailian",
+                  "modelKey": "qwen-max",
+                  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  "path": "/chat/completions",
+                  "apiKey": "sk-123"
+                }
+                """;
+
+        mockMvc.perform(post("/user/llm/cloud-models/preview-health")
+                        .with(authWith())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403))
+                .andExpect(jsonPath("$.message", containsString("Access Denied")));
+
+        verifyNoInteractions(userService);
+    }
+
+    @Test
+    void previewCloudModelHealth_shouldSucceedWithCreatePermission() throws Exception {
+        CloudLlmHealthResponse response = CloudLlmHealthResponse.builder()
+                .currentProvider("bailian")
+                .runtimeSource("MANUAL_PRECHECK")
+                .model("qwen-max")
+                .dnsOk(true)
+                .authOk(true)
+                .modelOk(true)
+                .latencyMs(123L)
+                .message("云端连通正常")
+                .build();
+        when(userService.previewCloudLlmHealth(
+                1001L,
+                "bailian",
+                "qwen-max",
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                "/chat/completions",
+                "openai-compatible",
+                "sk-123"
+        )).thenReturn(response);
+
+        String body = """
+                {
+                  "provider": "bailian",
+                  "modelKey": "qwen-max",
+                  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                  "path": "/chat/completions",
+                  "protocol": "openai-compatible",
+                  "apiKey": "sk-123"
+                }
+                """;
+
+        mockMvc.perform(post("/user/llm/cloud-models/preview-health")
+                        .with(authWith("PRIVATE_CLOUD_MODEL_CREATE"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.model").value("qwen-max"))
+                .andExpect(jsonPath("$.data.message").value("云端连通正常"))
+                .andExpect(jsonPath("$.data.latencyMs").value(123));
+
+        verify(userService).previewCloudLlmHealth(
+                eq(1001L),
+                eq("bailian"),
+                eq("qwen-max"),
+                eq("https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                eq("/chat/completions"),
+                eq("openai-compatible"),
+                eq("sk-123")
+        );
+    }
     private RequestPostProcessor authWith(String... authorities) {
         List<GrantedAuthority> grantedAuthorities = Arrays.stream(authorities)
                 .map(item -> (GrantedAuthority) new SimpleGrantedAuthority(item))
@@ -185,3 +276,4 @@ class UserControllerMockMvcTest {
         }
     }
 }
+

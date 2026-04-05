@@ -2,7 +2,9 @@ package com.cet46.vocab.service.impl;
 
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.entity.CloudLlmModel;
+import com.cet46.vocab.llm.CloudApiKeyCipher;
 import com.cet46.vocab.mapper.CloudLlmModelMapper;
+import com.cet46.vocab.mapper.CloudLlmProviderCredentialMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -27,13 +29,19 @@ class CloudLlmModelServiceImplBoundaryTest {
     private CloudLlmProperties cloudLlmProperties;
 
     @Mock
+    private CloudLlmProviderCredentialMapper cloudLlmProviderCredentialMapper;
+
+    @Mock
     private JdbcTemplate jdbcTemplate;
+
+    @Mock
+    private CloudApiKeyCipher cloudApiKeyCipher;
 
     private CloudLlmModelServiceImpl service;
 
     @BeforeEach
     void setUp() {
-        service = new CloudLlmModelServiceImpl(cloudLlmModelMapper, cloudLlmProperties, jdbcTemplate);
+        service = new CloudLlmModelServiceImpl(cloudLlmModelMapper, cloudLlmProviderCredentialMapper, cloudLlmProperties, jdbcTemplate, cloudApiKeyCipher);
     }
 
     @Test
@@ -60,7 +68,7 @@ class CloudLlmModelServiceImplBoundaryTest {
                 .build();
         when(cloudLlmModelMapper.selectById(10L)).thenReturn(existing, after);
 
-        CloudLlmModel result = service.updatePrivate(9L, 10L, "qwen3.5-122b-a10b", "new", null);
+        CloudLlmModel result = service.updatePrivate(9L, 10L, null, "qwen3.5-122b-a10b", "new", null, null, null, null, null, null);
 
         assertEquals(false, result.getEnabled());
         verify(cloudLlmModelMapper).updateById(any(CloudLlmModel.class));
@@ -80,7 +88,7 @@ class CloudLlmModelServiceImplBoundaryTest {
 
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> service.updatePrivate(9L, 10L, "qwen3.5-flash", "new", true)
+                () -> service.updatePrivate(9L, 10L, null, "qwen3.5-flash", "new", null, null, null, null, null, true)
         );
 
         assertEquals("cloud model not found: 10", ex.getMessage());
@@ -111,7 +119,7 @@ class CloudLlmModelServiceImplBoundaryTest {
 
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> service.updatePrivate(1L, 1L, tooLong, "name", true)
+                () -> service.updatePrivate(1L, 1L, null, tooLong, "name", null, null, null, null, null, true)
         );
 
         assertEquals("modelKey length must be <= 128", ex.getMessage());

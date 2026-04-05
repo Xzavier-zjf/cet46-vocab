@@ -16,26 +16,17 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@TableName("cloud_llm_model")
-public class CloudLlmModel {
+@TableName("cloud_llm_provider_credential")
+public class CloudLlmProviderCredential {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
     private String provider;
-    private String modelKey;
-    private String baseUrl;
-    private String path;
-    private String protocol;
-    private String apiKeyCiphertext;
-    private String apiKeyMask;
-    private String extraHeadersJson;
-    private String displayName;
-    private Boolean enabled;
-    private Boolean isDefault;
     private String visibility;
     private Long ownerUserId;
-    private Long tenantId;
+    private String apiKeyCiphertext;
+    private String apiKeyMask;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
@@ -43,3 +34,4 @@ public class CloudLlmModel {
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
 }
+

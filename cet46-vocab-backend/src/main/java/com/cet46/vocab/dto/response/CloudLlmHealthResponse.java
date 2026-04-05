@@ -10,6 +10,7 @@ import java.util.List;
 public class CloudLlmHealthResponse {
 
     private String currentProvider;
+    private String runtimeSource;
     private String baseUrl;
     private String model;
     private Boolean configured;
@@ -20,4 +21,3 @@ public class CloudLlmHealthResponse {
     private String message;
     private List<String> details;
 }
-

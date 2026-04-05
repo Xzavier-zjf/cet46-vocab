@@ -12,7 +12,14 @@ import lombok.NoArgsConstructor;
 public class LocalModelItemResponse {
     private String name;
     private String displayName;
+    private String visibility;
+    private String baseUrl;
+    private String path;
+    private String protocol;
+    private Boolean hasApiKey;
+    private String apiKeyMask;
     private Long sizeBytes;
     private String modifiedAt;
     private String digest;
 }
+

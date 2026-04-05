@@ -2,13 +2,13 @@ package com.cet46.vocab.llm;
 
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
-import org.springframework.http.HttpStatusCode;
+import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.client.RestTemplateBuilder;
-import jakarta.annotation.PostConstruct;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
@@ -19,10 +19,10 @@ import org.springframework.web.client.RestTemplate;
 
 import java.net.InetAddress;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
 
 @Component
 public class CloudLlmClient {
@@ -50,18 +50,10 @@ public class CloudLlmClient {
                 cloudLlmProperties.getModel(),
                 cloudLlmProperties.getTimeout(),
                 StringUtils.hasText(cloudLlmProperties.getApiKey()));
-        String baseUrl = cloudLlmProperties.getBaseUrl();
-        if (StringUtils.hasText(baseUrl) && !baseUrl.contains("dashscope.aliyuncs.com")) {
-            log.warn("cloud llm baseUrl is not DashScope: {}", baseUrl);
-        }
     }
 
     public String generate(String prompt) {
-        return generate(prompt, null, cloudLlmProperties.getMaxTokens());
-    }
-
-    public String generate(String prompt, Integer maxTokens) {
-        return generate(prompt, null, maxTokens);
+        return generate(prompt, (String) null, cloudLlmProperties.getMaxTokens());
     }
 
     public String generate(String prompt, String modelOverride) {
@@ -72,30 +64,46 @@ public class CloudLlmClient {
         return generateWithMeta(prompt, modelOverride, maxTokens).content();
     }
 
+    public String generate(String prompt, CloudLlmRuntimeConfig runtimeConfig, Integer maxTokens) {
+        return generateWithMeta(prompt, runtimeConfig, maxTokens).content();
+    }
+
     public GenerationResult generateWithMeta(String prompt, Integer maxTokens) {
-        return generateWithMeta(prompt, null, maxTokens);
+        return generateWithMeta(prompt, (String) null, maxTokens);
     }
 
     public GenerationResult generateWithMeta(String prompt, String modelOverride, Integer maxTokens) {
-        String requestModel = resolveRequestModel(modelOverride);
+        CloudLlmRuntimeConfig runtime = new CloudLlmRuntimeConfig(
+                cloudLlmProperties.resolveDefaultProvider(),
+                resolveRequestModel(modelOverride),
+                cloudLlmProperties.getBaseUrl(),
+                cloudLlmProperties.getPath(),
+                cloudLlmProperties.getApiKey(),
+                "openai-compatible",
+                "SYSTEM_CONFIG"
+        );
+        return generateWithMeta(prompt, runtime, maxTokens);
+    }
+
+    public GenerationResult generateWithMeta(String prompt, CloudLlmRuntimeConfig runtimeConfig, Integer maxTokens) {
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
             throw new OllamaClient.LlmCallException("cloud llm is disabled");
         }
-        if (!StringUtils.hasText(cloudLlmProperties.getBaseUrl()) || !StringUtils.hasText(requestModel)) {
-            throw new OllamaClient.LlmCallException("cloud llm base-url/model is not configured");
-        }
-        if (!StringUtils.hasText(cloudLlmProperties.getApiKey())) {
-            throw new OllamaClient.LlmCallException("cloud llm api-key is not configured");
-        }
+        CloudLlmRuntimeConfig runtime = requireUsableRuntime(runtimeConfig);
 
-        String url = joinUrl(cloudLlmProperties.getBaseUrl(), cloudLlmProperties.getPath());
-        log.info("cloud llm request url={}, model={}", url, requestModel);
+        String url = joinUrl(runtime.baseUrl(), runtime.path());
+        log.info("cloud llm request url={}, provider={}, model={}, source={}",
+                url,
+                runtime.provider(),
+                runtime.model(),
+                runtime.source());
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(cloudLlmProperties.getApiKey().trim());
+        headers.setBearerAuth(runtime.apiKey().trim());
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", requestModel);
+        requestBody.put("model", runtime.model());
         requestBody.put("temperature", cloudLlmProperties.getTemperature());
         if (maxTokens != null && maxTokens > 0) {
             requestBody.put("max_tokens", maxTokens);
@@ -114,10 +122,7 @@ public class CloudLlmClient {
                     throw new OllamaClient.LlmCallException("cloud llm response content is empty");
                 }
                 boolean truncated = isLengthTruncated(body, maxTokens);
-                log.info("cloud llm response model={}, chars={}, preview={}",
-                        requestModel,
-                        content.length(),
-                        preview(content));
+                log.info("cloud llm response model={}, chars={}, preview={}", runtime.model(), content.length(), preview(content));
                 return new GenerationResult(content, truncated);
             } catch (RuntimeException ex) {
                 lastException = ex;
@@ -126,45 +131,60 @@ public class CloudLlmClient {
 
         throw new OllamaClient.LlmCallException("cloud llm call failed", lastException);
     }
+
     public CloudLlmHealthResponse healthCheck() {
-        return healthCheck(null);
+        return healthCheck((CloudLlmRuntimeConfig) null);
     }
 
     public CloudLlmHealthResponse healthCheck(String modelOverride) {
+        CloudLlmRuntimeConfig runtime = new CloudLlmRuntimeConfig(
+                cloudLlmProperties.resolveDefaultProvider(),
+                resolveRequestModel(modelOverride),
+                cloudLlmProperties.getBaseUrl(),
+                cloudLlmProperties.getPath(),
+                cloudLlmProperties.getApiKey(),
+                "openai-compatible",
+                "SYSTEM_CONFIG"
+        );
+        return healthCheck(runtime);
+    }
+
+    public CloudLlmHealthResponse healthCheck(CloudLlmRuntimeConfig runtimeConfig) {
         List<String> details = new ArrayList<>();
-        String baseUrl = cloudLlmProperties.getBaseUrl();
-        String model = resolveRequestModel(modelOverride);
+        CloudLlmRuntimeConfig runtime = normalizeRuntime(runtimeConfig);
+
         boolean configured = Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
-                && StringUtils.hasText(baseUrl)
-                && StringUtils.hasText(model)
-                && StringUtils.hasText(cloudLlmProperties.getApiKey());
+                && StringUtils.hasText(runtime.baseUrl())
+                && StringUtils.hasText(runtime.model())
+                && StringUtils.hasText(runtime.apiKey());
+
         if (!Boolean.TRUE.equals(cloudLlmProperties.getEnabled())) {
-            details.add("\u4E91\u7AEF\u80FD\u529B\u672A\u542F\u7528\uFF08llm.cloud.enabled=false\uFF09");
+            details.add("云端能力未启用（llm.cloud.enabled=false）");
         }
-        if (!StringUtils.hasText(baseUrl)) {
-            details.add("\u7F3A\u5C11 llm.cloud.base-url");
+        if (!StringUtils.hasText(runtime.baseUrl())) {
+            details.add("缺少 base-url");
         }
-        if (!StringUtils.hasText(model)) {
-            details.add("\u7F3A\u5C11 llm.cloud.model");
+        if (!StringUtils.hasText(runtime.model())) {
+            details.add("缺少 model");
         }
-        if (!StringUtils.hasText(cloudLlmProperties.getApiKey())) {
-            details.add("\u7F3A\u5C11\u4E91\u7AEF API Key");
+        if (!StringUtils.hasText(runtime.apiKey())) {
+            details.add("缺少云端 API Key");
         }
 
         String host = null;
         boolean dnsOk = false;
-        if (StringUtils.hasText(baseUrl)) {
+        if (StringUtils.hasText(runtime.baseUrl())) {
             try {
-                URI uri = URI.create(baseUrl.trim());
+                URI uri = URI.create(runtime.baseUrl().trim());
                 host = uri.getHost();
                 if (!StringUtils.hasText(host)) {
-                    details.add("base-url \u672A\u5305\u542B\u53EF\u89E3\u6790 host");
+                    details.add("base-url 未包含可解析 host");
                 } else {
                     InetAddress.getByName(host);
                     dnsOk = true;
                 }
             } catch (Exception ex) {
-                details.add("DNS \u89E3\u6790\u5931\u8D25: " + ex.getMessage());
+                details.add("DNS 解析失败: " + ex.getMessage());
             }
         }
 
@@ -174,53 +194,54 @@ public class CloudLlmClient {
         if (configured && dnsOk) {
             long startMs = System.currentTimeMillis();
             try {
-                String content = callHealthProbe(model);
+                String content = callHealthProbe(runtime);
                 latencyMs = System.currentTimeMillis() - startMs;
                 authOk = true;
                 modelOk = StringUtils.hasText(content);
                 if (!modelOk) {
-                    details.add("\u9274\u6743\u901A\u8FC7\uFF0C\u4F46\u6A21\u578B\u8FD4\u56DE\u7A7A\u5185\u5BB9");
+                    details.add("鉴权通过，但模型返回空内容");
                 }
             } catch (HttpStatusCodeException ex) {
                 latencyMs = System.currentTimeMillis() - startMs;
                 HttpStatusCode code = ex.getStatusCode();
                 int status = code.value();
                 if (status == 401 || status == 403) {
-                    details.add("\u9274\u6743\u5931\u8D25\uFF08HTTP " + status + "\uFF09");
+                    details.add("鉴权失败（HTTP " + status + "）");
                 } else {
                     authOk = true;
-                    details.add("\u6A21\u578B\u8C03\u7528\u5931\u8D25\uFF08HTTP " + status + "\uFF09");
+                    details.add("模型调用失败（HTTP " + status + "）");
                     String body = ex.getResponseBodyAsString();
                     if (StringUtils.hasText(body)) {
-                        details.add("\u9519\u8BEF\u6458\u8981: " + preview(body));
+                        details.add("错误摘要: " + preview(body));
                     }
                 }
             } catch (ResourceAccessException ex) {
                 latencyMs = System.currentTimeMillis() - startMs;
-                details.add("\u7F51\u7EDC\u8FDE\u63A5\u5931\u8D25: " + ex.getMessage());
+                details.add("网络连接失败: " + ex.getMessage());
             } catch (Exception ex) {
                 latencyMs = System.currentTimeMillis() - startMs;
-                details.add("\u8C03\u7528\u5F02\u5E38: " + ex.getMessage());
+                details.add("调用异常: " + ex.getMessage());
             }
         }
 
         String message;
         if (!configured) {
-            message = "\u4E91\u7AEF\u914D\u7F6E\u4E0D\u5B8C\u6574";
+            message = "云端配置不完整";
         } else if (!dnsOk) {
-            message = "DNS \u89E3\u6790\u5931\u8D25";
+            message = "DNS 解析失败";
         } else if (!authOk) {
-            message = "\u9274\u6743\u5931\u8D25";
+            message = "鉴权失败";
         } else if (!modelOk) {
-            message = "\u6A21\u578B\u4E0D\u53EF\u7528";
+            message = "模型不可用";
         } else {
-            message = "\u4E91\u7AEF\u8FDE\u901A\u6B63\u5E38";
+            message = "云端连通正常";
         }
 
         return CloudLlmHealthResponse.builder()
-                .currentProvider("cloud")
-                .baseUrl(baseUrl)
-                .model(model)
+                .currentProvider(StringUtils.hasText(runtime.provider()) ? runtime.provider() : "cloud")
+                .runtimeSource(runtime.source())
+                .baseUrl(runtime.baseUrl())
+                .model(runtime.model())
                 .configured(configured)
                 .dnsOk(dnsOk)
                 .authOk(authOk)
@@ -231,14 +252,14 @@ public class CloudLlmClient {
                 .build();
     }
 
-    private String callHealthProbe(String model) {
-        String url = joinUrl(cloudLlmProperties.getBaseUrl(), cloudLlmProperties.getPath());
+    private String callHealthProbe(CloudLlmRuntimeConfig runtime) {
+        String url = joinUrl(runtime.baseUrl(), runtime.path());
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(cloudLlmProperties.getApiKey().trim());
+        headers.setBearerAuth(runtime.apiKey().trim());
 
         Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model);
+        requestBody.put("model", runtime.model());
         requestBody.put("temperature", 0);
         requestBody.put("messages", List.of(Map.of("role", "user", "content", "Reply with OK")));
 
@@ -246,15 +267,43 @@ public class CloudLlmClient {
         ResponseEntity<Map> response = restTemplate.postForEntity(url, requestEntity, Map.class);
         return extractContent(response.getBody());
     }
+
+    private CloudLlmRuntimeConfig requireUsableRuntime(CloudLlmRuntimeConfig runtimeConfig) {
+        CloudLlmRuntimeConfig runtime = normalizeRuntime(runtimeConfig);
+        if (!StringUtils.hasText(runtime.baseUrl()) || !StringUtils.hasText(runtime.model())) {
+            throw new OllamaClient.LlmCallException("cloud llm base-url/model is not configured");
+        }
+        if (!StringUtils.hasText(runtime.apiKey())) {
+            throw new OllamaClient.LlmCallException("cloud llm api-key is not configured");
+        }
+        return runtime;
+    }
+
+    private CloudLlmRuntimeConfig normalizeRuntime(CloudLlmRuntimeConfig runtimeConfig) {
+        if (runtimeConfig != null) {
+            return runtimeConfig;
+        }
+        return new CloudLlmRuntimeConfig(
+                cloudLlmProperties.resolveDefaultProvider(),
+                cloudLlmProperties.resolveDefaultModel(),
+                cloudLlmProperties.getBaseUrl(),
+                cloudLlmProperties.getPath(),
+                cloudLlmProperties.getApiKey(),
+                "openai-compatible",
+                "SYSTEM_CONFIG"
+        );
+    }
+
     private String resolveRequestModel(String modelOverride) {
         if (StringUtils.hasText(modelOverride)) {
             return modelOverride.trim();
         }
         return cloudLlmProperties.resolveDefaultModel();
     }
+
     private String joinUrl(String baseUrl, String path) {
         String base = baseUrl.trim();
-        String suffix = StringUtils.hasText(path) ? path.trim() : "/v1/chat/completions";
+        String suffix = StringUtils.hasText(path) ? path.trim() : "/chat/completions";
         if (base.endsWith("/") && suffix.startsWith("/")) {
             return base.substring(0, base.length() - 1) + suffix;
         }
@@ -317,7 +366,6 @@ public class CloudLlmClient {
         if (!(completionTokensObj instanceof Number completionTokens)) {
             return false;
         }
-        // Some gateways may not return finish_reason=length consistently.
         return completionTokens.intValue() >= Math.max(1, requestMaxTokens - 8);
     }
 
@@ -332,6 +380,4 @@ public class CloudLlmClient {
     public record GenerationResult(String content, boolean truncated) {
     }
 }
-
-
 

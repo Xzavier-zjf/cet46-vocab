@@ -29,13 +29,51 @@ public interface CloudLlmModelService {
 
     String resolveSelectedModelForUser(String savedModel, Long userId);
 
-    CloudLlmModel create(String provider, String modelKey, String displayName, Boolean enabled, Boolean isDefault);
+    CloudLlmModel create(String provider,
+                         String modelKey,
+                         String displayName,
+                         String baseUrl,
+                         String path,
+                         String protocol,
+                         String apiKey,
+                         Boolean clearApiKey,
+                         Boolean enabled,
+                         Boolean isDefault);
 
-    CloudLlmModel update(Long id, String provider, String modelKey, String displayName, Boolean enabled, Boolean isDefault);
+    CloudLlmModel update(Long id,
+                         String provider,
+                         String modelKey,
+                         String displayName,
+                         String baseUrl,
+                         String path,
+                         String protocol,
+                         String apiKey,
+                         Boolean clearApiKey,
+                         Boolean enabled,
+                         Boolean isDefault);
 
-    CloudLlmModel createPrivate(Long ownerUserId, String modelKey, String displayName, Boolean enabled);
+    CloudLlmModel createPrivate(Long ownerUserId,
+                                String provider,
+                                String modelKey,
+                                String displayName,
+                                String baseUrl,
+                                String path,
+                                String protocol,
+                                String apiKey,
+                                Boolean clearApiKey,
+                                Boolean enabled);
 
-    CloudLlmModel updatePrivate(Long ownerUserId, Long id, String modelKey, String displayName, Boolean enabled);
+    CloudLlmModel updatePrivate(Long ownerUserId,
+                                Long id,
+                                String provider,
+                                String modelKey,
+                                String displayName,
+                                String baseUrl,
+                                String path,
+                                String protocol,
+                                String apiKey,
+                                Boolean clearApiKey,
+                                Boolean enabled);
 
     CloudLlmModel setPrivateEnabled(Long ownerUserId, Long id, Boolean enabled);
 

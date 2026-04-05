@@ -261,7 +261,6 @@
           <el-select
             v-model="cloudModelForm.provider"
             :placeholder="TEXT.cloudModelProviderPlaceholder"
-            :disabled="!isAdmin || cloudModelManageScope !== 'admin'"
             style="min-width: 220px"
           >
             <el-option
@@ -277,6 +276,53 @@
         </el-form-item>
         <el-form-item :label="TEXT.cloudModelKey">
           <el-input v-model="cloudModelForm.modelKey" maxlength="128" :placeholder="TEXT.cloudModelKeyPlaceholder" />
+        </el-form-item>
+        <el-form-item :label="TEXT.cloudModelBaseUrl">
+          <el-input v-model="cloudModelForm.baseUrl" maxlength="255" :placeholder="TEXT.cloudModelBaseUrlPlaceholder" />
+        </el-form-item>
+        <el-form-item :label="TEXT.cloudModelPath">
+          <el-input v-model="cloudModelForm.path" maxlength="128" :placeholder="TEXT.cloudModelPathPlaceholder" />
+        </el-form-item>
+        <el-form-item :label="TEXT.cloudModelProtocol">
+          <el-select
+            v-model="cloudModelForm.protocol"
+            filterable
+            allow-create
+            default-first-option
+            :reserve-keyword="false"
+            :placeholder="TEXT.cloudModelProtocolPlaceholder"
+            style="min-width: 220px"
+          >
+            <el-option
+              v-for="item in cloudModelProtocolOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="TEXT.cloudModelPreviewCheck">
+          <div class="health-actions">
+            <BtnSecondary class="health-btn" :loading="cloudModelPreviewChecking" @click="checkCloudModelPreview">{{ TEXT.cloudModelPreviewCheck }}</BtnSecondary>
+            <span v-if="cloudModelPreviewResult" class="health-summary" :class="cloudModelPreviewResult.modelOk ? 'preview-ok' : 'preview-fail'">
+              {{ cloudModelPreviewResult.message }}
+              <template v-if="cloudModelPreviewResult.latencyMs">({{ cloudModelPreviewResult.latencyMs }}ms)</template>
+            </span>
+          </div>
+          <div class="cloud-key-mask">{{ TEXT.cloudModelPreviewHint }}</div>
+        </el-form-item>
+        <el-form-item :label="TEXT.cloudModelApiKey">
+          <el-input
+            v-model="cloudModelForm.apiKey"
+            type="password"
+            show-password
+            maxlength="512"
+            :placeholder="TEXT.cloudModelApiKeyPlaceholder"
+          />
+          <div v-if="cloudModelForm.hasApiKey" class="cloud-key-mask">{{ TEXT.cloudModelApiKeyCurrent }}{{ cloudModelForm.apiKeyMask || TEXT.cloudModelApiKeyExists }}</div>
+        </el-form-item>
+        <el-form-item v-if="cloudModelForm.hasApiKey" :label="TEXT.cloudModelClearApiKey">
+          <el-switch v-model="cloudModelForm.clearApiKey" />
         </el-form-item>
         <el-form-item :label="TEXT.cloudModelStatus">
           <el-switch v-model="cloudModelForm.enabled" />
@@ -376,6 +422,19 @@ const TEXT = {
   cloudModelEnabled: '\u5df2\u542f\u7528',
   cloudModelDisabled: '\u5df2\u505c\u7528',
   cloudModelDefault: '\u9ed8\u8ba4',
+  cloudModelBaseUrl: 'API \u8bf7\u6c42\u5730\u5740',
+  cloudModelBaseUrlPlaceholder: '\u4f8b\u5982 https://dashscope.aliyuncs.com/compatible-mode/v1',
+  cloudModelPath: 'API Path',
+  cloudModelPathPlaceholder: '\u4f8b\u5982 /chat/completions',
+  cloudModelProtocol: '\u534f\u8bae',
+  cloudModelProtocolPlaceholder: '\u9009\u62e9\u534f\u8bae\uff0c\u9ed8\u8ba4 openai-compatible',
+  cloudModelApiKey: 'API Key',
+  cloudModelApiKeyPlaceholder: '\u7559\u7a7a\u8868\u793a\u4e0d\u4fee\u6539\u65e7 Key',
+  cloudModelApiKeyCurrent: '\u5f53\u524d Key\uff1a',
+  cloudModelApiKeyExists: '\u5df2\u914d\u7f6e',
+  cloudModelPreviewCheck: '\u8fde\u901a\u81ea\u68c0\u6d4b\u901f',
+  cloudModelPreviewHint: '\u4f7f\u7528\u5f53\u524d\u8868\u5355\u53c2\u6570\u7acb\u5373\u68c0\u67e5\u6a21\u578b\u662f\u5426\u53ef\u7528',
+  cloudModelClearApiKey: '\u6e05\u7a7a\u5df2\u6709 Key',
   setDefault: '\u8bbe\u4e3a\u9ed8\u8ba4',
   edit: '\u7f16\u8f91',
   delete: '\u5220\u9664',
@@ -392,7 +451,9 @@ const TEXT = {
   privateCloudModelManage: '\u6211\u7684\u79c1\u6709\u4e91\u7aef\u6a21\u578b',
   privateCloudModelAdd: '\u65b0\u589e\u79c1\u6709\u6a21\u578b',
   privateCloudModelCreateTitle: '\u65b0\u589e\u79c1\u6709\u4e91\u7aef\u6a21\u578b',
-  privateCloudModelEditTitle: '\u7f16\u8f91\u79c1\u6709\u4e91\u7aef\u6a21\u578b'
+  privateCloudModelEditTitle: '\u7f16\u8f91\u79c1\u6709\u4e91\u7aef\u6a21\u578b',
+  modelVisibilityPrivate: '\u79c1\u6709',
+  modelVisibilityPublic: '\u516c\u6709'
 }
 
 const userStore = useUserStore()
@@ -415,6 +476,8 @@ const privateCloudModelsLoading = ref(false)
 const privateCloudModels = ref([])
 const cloudModelDialogVisible = ref(false)
 const cloudModelSaving = ref(false)
+const cloudModelPreviewChecking = ref(false)
+const cloudModelPreviewResult = ref(null)
 const cloudModelEditingId = ref(null)
 const cloudModelManageScope = ref('admin')
 const cloudModelOriginalEnabled = ref(null)
@@ -448,6 +511,16 @@ const cloudModelProviderOptions = ref([
   { value: 'bailian', label: '\u767e\u70bc' }
 ])
 
+const cloudModelProtocolOptions = [
+  { value: 'openai-compatible', label: 'OpenAI Compatible' },
+  { value: 'azure-openai', label: 'Azure OpenAI' },
+  { value: 'anthropic', label: 'Anthropic Claude' },
+  { value: 'google-gemini', label: 'Google Gemini' },
+  { value: 'cohere', label: 'Cohere' },
+  { value: 'xai', label: 'xAI' },
+  { value: 'ollama', label: 'Ollama' }
+]
+
 const form = reactive({
   username: '',
   nickname: '',
@@ -461,6 +534,13 @@ const cloudModelForm = reactive({
   provider: 'bailian',
   modelKey: '',
   displayName: '',
+  baseUrl: '',
+  path: '',
+  protocol: 'openai-compatible',
+  apiKey: '',
+  clearApiKey: false,
+  hasApiKey: false,
+  apiKeyMask: '',
   enabled: true,
   isDefault: false
 })
@@ -651,7 +731,11 @@ const cloudModelOptionLabel = (item) => {
   if (!item) return ''
   const key = item.name || ''
   const displayName = item.displayName || ''
-  return displayName && displayName !== key ? `${displayName} (${key})` : key
+  const visibility = String(item.visibility || '').trim().toLowerCase()
+  const isPrivate = visibility === 'user-private' || visibility === 'user_private' || visibility === 'private'
+  const visibilityLabel = isPrivate ? TEXT.modelVisibilityPrivate : TEXT.modelVisibilityPublic
+  const modelLabel = displayName && displayName !== key ? `${displayName} (${key})` : key
+  return `[${visibilityLabel}] ${modelLabel}`
 }
 
 const loadAdminCloudModels = async () => {
@@ -682,9 +766,17 @@ const openCloudModelCreate = () => {
   cloudModelForm.provider = 'bailian'
   cloudModelForm.modelKey = ''
   cloudModelForm.displayName = ''
+  cloudModelForm.baseUrl = ''
+  cloudModelForm.path = ''
+  cloudModelForm.protocol = 'openai-compatible'
+  cloudModelForm.apiKey = ''
+  cloudModelForm.clearApiKey = false
+  cloudModelForm.hasApiKey = false
+  cloudModelForm.apiKeyMask = ''
   cloudModelForm.enabled = true
   cloudModelForm.isDefault = false
   cloudModelOriginalEnabled.value = null
+  cloudModelPreviewResult.value = null
   cloudModelDialogVisible.value = true
 }
 
@@ -694,9 +786,17 @@ const openPrivateCloudModelCreate = () => {
   cloudModelForm.provider = 'bailian'
   cloudModelForm.modelKey = ''
   cloudModelForm.displayName = ''
+  cloudModelForm.baseUrl = ''
+  cloudModelForm.path = ''
+  cloudModelForm.protocol = 'openai-compatible'
+  cloudModelForm.apiKey = ''
+  cloudModelForm.clearApiKey = false
+  cloudModelForm.hasApiKey = false
+  cloudModelForm.apiKeyMask = ''
   cloudModelForm.enabled = true
   cloudModelForm.isDefault = false
   cloudModelOriginalEnabled.value = null
+  cloudModelPreviewResult.value = null
   cloudModelDialogVisible.value = true
 }
 
@@ -707,9 +807,17 @@ const openCloudModelEdit = (row) => {
   cloudModelForm.provider = row.provider || 'bailian'
   cloudModelForm.modelKey = row.modelKey || ''
   cloudModelForm.displayName = row.displayName || ''
+  cloudModelForm.baseUrl = row.baseUrl || ''
+  cloudModelForm.path = row.path || ''
+  cloudModelForm.protocol = row.protocol || 'openai-compatible'
+  cloudModelForm.apiKey = ''
+  cloudModelForm.clearApiKey = false
+  cloudModelForm.hasApiKey = !!row.hasApiKey
+  cloudModelForm.apiKeyMask = row.apiKeyMask || ''
   cloudModelForm.enabled = !!row.enabled
   cloudModelForm.isDefault = !!row.isDefault
   cloudModelOriginalEnabled.value = !!row.enabled
+  cloudModelPreviewResult.value = null
   cloudModelDialogVisible.value = true
 }
 
@@ -720,12 +828,47 @@ const openPrivateCloudModelEdit = (row) => {
   cloudModelForm.provider = row.provider || 'bailian'
   cloudModelForm.modelKey = row.modelKey || ''
   cloudModelForm.displayName = row.displayName || ''
+  cloudModelForm.baseUrl = row.baseUrl || ''
+  cloudModelForm.path = row.path || ''
+  cloudModelForm.protocol = row.protocol || 'openai-compatible'
+  cloudModelForm.apiKey = ''
+  cloudModelForm.clearApiKey = false
+  cloudModelForm.hasApiKey = !!row.hasApiKey
+  cloudModelForm.apiKeyMask = row.apiKeyMask || ''
   cloudModelForm.enabled = !!row.enabled
   cloudModelForm.isDefault = false
   cloudModelOriginalEnabled.value = !!row.enabled
+  cloudModelPreviewResult.value = null
   cloudModelDialogVisible.value = true
 }
 
+const checkCloudModelPreview = async () => {
+  const modelKey = String(cloudModelForm.modelKey || '').trim()
+  if (!modelKey) {
+    ElMessage.warning(TEXT.cloudModelRequired)
+    return
+  }
+  const normalizeOptional = (value) => {
+    const text = String(value || '').trim()
+    return text || null
+  }
+  cloudModelPreviewChecking.value = true
+  cloudModelPreviewResult.value = null
+  try {
+    const payload = {
+      provider: String(cloudModelForm.provider || '').trim() || 'bailian',
+      modelKey,
+      baseUrl: normalizeOptional(cloudModelForm.baseUrl),
+      path: normalizeOptional(cloudModelForm.path),
+      protocol: normalizeOptional(cloudModelForm.protocol),
+      apiKey: normalizeOptional(cloudModelForm.apiKey)
+    }
+    const res = await request.post('/user/llm/cloud-models/preview-health', payload, { timeout: 30000 })
+    cloudModelPreviewResult.value = res?.data || null
+  } finally {
+    cloudModelPreviewChecking.value = false
+  }
+}
 const saveCloudModel = async () => {
   const modelKey = String(cloudModelForm.modelKey || '').trim()
   if (!modelKey) {
@@ -734,9 +877,21 @@ const saveCloudModel = async () => {
   }
   cloudModelSaving.value = true
   try {
+    const normalizeOptional = (value) => {
+      const text = String(value || '').trim()
+      return text || null
+    }
+    const normalizedApiKey = normalizeOptional(cloudModelForm.apiKey)
+    const clearApiKey = !!cloudModelForm.clearApiKey
     const privatePayload = {
       modelKey,
-      displayName: String(cloudModelForm.displayName || '').trim() || modelKey
+      displayName: String(cloudModelForm.displayName || '').trim() || modelKey,
+      provider: String(cloudModelForm.provider || '').trim() || 'bailian',
+      baseUrl: normalizeOptional(cloudModelForm.baseUrl),
+      path: normalizeOptional(cloudModelForm.path),
+      protocol: normalizeOptional(cloudModelForm.protocol),
+      apiKey: normalizedApiKey,
+      clearApiKey
     }
     const enabledFlag = !!cloudModelForm.enabled
 
@@ -760,7 +915,6 @@ const saveCloudModel = async () => {
       const adminPayload = {
         ...privatePayload,
         enabled: enabledFlag,
-        provider: String(cloudModelForm.provider || '').trim() || 'bailian',
         isDefault: !!cloudModelForm.isDefault
       }
       if (cloudModelEditingId.value) {
@@ -770,6 +924,7 @@ const saveCloudModel = async () => {
       }
       await loadAdminCloudModels()
     }
+    cloudModelPreviewResult.value = null
     cloudModelDialogVisible.value = false
     await loadCloudModels()
     ElMessage.success(TEXT.cloudModelSaved)
@@ -1011,6 +1166,21 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
+.preview-ok {
+  color: #2c7b55;
+}
+
+.preview-fail {
+  color: #b4503d;
+}
+
+.cloud-key-mask {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+
 .admin-model-table {
   margin-top: 10px;
 }
@@ -1108,18 +1278,6 @@ onUnmounted(() => {
   }
 }
 </style>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -10,6 +10,8 @@ import com.cet46.vocab.llm.CloudLlmClient;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.llm.OllamaClient;
 import com.cet46.vocab.llm.LlmUsageTracker;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfig;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.llm.PromptTemplate;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.service.CloudLlmModelService;
@@ -43,6 +45,7 @@ public class AssistantController {
     private final ObjectMapper objectMapper;
     private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
+    private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
 
     public AssistantController(UserMapper userMapper,
                                OllamaClient ollamaClient,
@@ -50,7 +53,8 @@ public class AssistantController {
                                CloudLlmProperties cloudLlmProperties,
                                ObjectMapper objectMapper,
                                LlmUsageTracker llmUsageTracker,
-                               CloudLlmModelService cloudLlmModelService) {
+                               CloudLlmModelService cloudLlmModelService,
+                               CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
         this.userMapper = userMapper;
         this.ollamaClient = ollamaClient;
         this.cloudLlmClient = cloudLlmClient;
@@ -58,6 +62,7 @@ public class AssistantController {
         this.objectMapper = objectMapper;
         this.llmUsageTracker = llmUsageTracker;
         this.cloudLlmModelService = cloudLlmModelService;
+        this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
     }
 
     @PostMapping("/chat")
@@ -71,7 +76,7 @@ public class AssistantController {
         String style = resolveUserStyle(userId);
         String provider = resolveUserProvider(userId);
         String cloudModel = resolveUserCloudModel(userId);
-        String normalizedProvider = chooseProvider(provider, cloudModel);
+        String normalizedProvider = chooseProvider(userId, provider, cloudModel);
         String localModel = resolveUserLocalModel(userId);
         ModeConfig modeConfig = buildModeConfig(normalizedProvider, localModel);
         String prompt = buildAssistantPrompt(req, style, modeConfig);
@@ -80,14 +85,14 @@ public class AssistantController {
             String effectiveProvider = normalizedProvider;
             GeneratedAnswer generated;
             try {
-                generated = generateCompleteAnswer(prompt, normalizedProvider, modeConfig, localModel, cloudModel);
+                generated = generateCompleteAnswer(prompt, normalizedProvider, modeConfig, localModel, cloudModel, userId);
             } catch (Exception firstEx) {
                 if (!LlmProvider.CLOUD.equals(normalizedProvider)) {
                     throw firstEx;
                 }
                 ModeConfig localModeConfig = buildModeConfig(LlmProvider.LOCAL, localModel);
                 String localPrompt = buildAssistantPrompt(req, style, localModeConfig);
-                generated = generateCompleteAnswer(localPrompt, LlmProvider.LOCAL, localModeConfig, localModel, cloudModel);
+                generated = generateCompleteAnswer(localPrompt, LlmProvider.LOCAL, localModeConfig, localModel, cloudModel, userId);
                 effectiveProvider = LlmProvider.LOCAL;
             }
             llmUsageTracker.record(userId, effectiveProvider, resolveUsedModel(effectiveProvider, localModel, cloudModel), "assistant.chat");
@@ -105,13 +110,13 @@ public class AssistantController {
         }
     }
 
-    private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig, String localModel, String cloudModel) {
+    private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig, String localModel, String cloudModel, Long userId) {
         String merged = "";
         String currentPrompt = prompt;
         int continuationRounds = 0;
 
         for (int i = 0; i <= modeConfig.maxContinuationRounds(); i++) {
-            GenerationChunk chunk = callModel(currentPrompt, provider, modeConfig, localModel, cloudModel);
+            GenerationChunk chunk = callModel(currentPrompt, provider, modeConfig, localModel, cloudModel, userId);
             String piece = chunk.content() == null ? "" : chunk.content().trim();
             if (!StringUtils.hasText(piece)) {
                 break;
@@ -129,9 +134,10 @@ public class AssistantController {
         return new GeneratedAnswer(stripEndMarker(merged).trim(), continuationRounds);
     }
 
-    private GenerationChunk callModel(String prompt, String provider, ModeConfig modeConfig, String localModel, String cloudModel) {
+    private GenerationChunk callModel(String prompt, String provider, ModeConfig modeConfig, String localModel, String cloudModel, Long userId) {
         if (LlmProvider.CLOUD.equals(provider)) {
-            CloudLlmClient.GenerationResult result = cloudLlmClient.generateWithMeta(prompt, cloudModel, modeConfig.cloudMaxTokens());
+            CloudLlmRuntimeConfig runtimeConfig = cloudLlmRuntimeConfigResolver.resolve(userId, cloudModel);
+            CloudLlmClient.GenerationResult result = cloudLlmClient.generateWithMeta(prompt, runtimeConfig, modeConfig.cloudMaxTokens());
             return new GenerationChunk(result.content(), result.truncated());
         }
         OllamaClient.GenerationResult result = ollamaClient.generatePlainTextWithMeta(prompt, modeConfig.localNumPredict(), localModel);
@@ -162,7 +168,7 @@ public class AssistantController {
 
     private boolean hasSuspiciousTail(String text) {
         String tail = text.length() > 20 ? text.substring(text.length() - 20) : text;
-        if (tail.endsWith("*") || tail.endsWith("**") || tail.endsWith("`")) {
+        if (tail.endsWith("*") || tail.endsWith("**") || tail.endsWith("")) {
             return true;
         }
         Character last = previousMeaningfulChar(tail, tail.length() - 1);
@@ -342,19 +348,16 @@ public class AssistantController {
         return cloudLlmProperties.resolveDefaultModel();
     }
 
-    private String chooseProvider(String preferredProvider, String cloudModel) {
+    private String chooseProvider(Long userId, String preferredProvider, String cloudModel) {
         String normalized = LlmProvider.normalize(preferredProvider);
-        if (LlmProvider.CLOUD.equals(normalized) && !isCloudAvailable(cloudModel)) {
+        if (LlmProvider.CLOUD.equals(normalized) && !isCloudAvailable(userId, cloudModel)) {
             return LlmProvider.LOCAL;
         }
         return normalized;
     }
 
-    private boolean isCloudAvailable(String cloudModel) {
-        return Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
-                && StringUtils.hasText(cloudLlmProperties.getBaseUrl())
-                && StringUtils.hasText(cloudModel)
-                && StringUtils.hasText(cloudLlmProperties.getApiKey());
+    private boolean isCloudAvailable(Long userId, String cloudModel) {
+        return cloudLlmRuntimeConfigResolver.isAvailable(userId, cloudModel);
     }
 
     private String resolveUsedModel(String provider, String localModel, String cloudModel) {
@@ -498,11 +501,11 @@ public class AssistantController {
             return "\u8fd9\u4e2a\u95ee\u9898\u6211\u6682\u65f6\u6ca1\u6709\u751f\u6210\u5230\u6709\u6548\u7b54\u6848\uff0c\u4f60\u53ef\u4ee5\u6362\u4e2a\u95ee\u6cd5\u518d\u8bd5\u4e00\u6b21\u3002";
         }
         String text = answer.trim();
-        if (text.startsWith("```")) {
-            text = text.replace("```markdown", "")
-                    .replace("```md", "")
-                    .replace("```json", "")
-                    .replace("```", "")
+        if (text.startsWith("")) {
+            text = text.replace("markdown", "")
+                    .replace("md", "")
+                    .replace("json", "")
+                    .replace("", "")
                     .trim();
         }
         String extracted = extractAnswerField(text);
@@ -627,6 +630,9 @@ public class AssistantController {
     private record GeneratedAnswer(String content, int continuationRounds) {
     }
 }
+
+
+
 
 
 

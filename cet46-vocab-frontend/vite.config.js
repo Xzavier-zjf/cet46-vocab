@@ -31,5 +31,40 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined
+
+          if (id.includes('/node_modules/vue/') || id.includes('/node_modules/@vue/')) {
+            return 'vue-core'
+          }
+          if (id.includes('/node_modules/vue-router/')) {
+            return 'vue-router'
+          }
+          if (id.includes('/node_modules/pinia/')) {
+            return 'pinia'
+          }
+          if (id.includes('/node_modules/axios/')) {
+            return 'axios'
+          }
+          if (id.includes('/node_modules/echarts/')) {
+            return 'echarts'
+          }
+          if (id.includes('/node_modules/@element-plus/icons-vue/')) {
+            return 'element-icons'
+          }
+
+          if (id.includes('/node_modules/element-plus/')) {
+            return 'element-plus'
+          }
+
+          return 'vendor'
+        }
+      }
+    }
   }
 })

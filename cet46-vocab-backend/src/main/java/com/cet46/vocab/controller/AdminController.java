@@ -169,6 +169,11 @@ public class AdminController {
                 req.getProvider(),
                 req.getModelKey(),
                 req.getDisplayName(),
+                req.getBaseUrl(),
+                req.getPath(),
+                req.getProtocol(),
+                req.getApiKey(),
+                req.getClearApiKey(),
                 req.getEnabled(),
                 req.getIsDefault()
         );
@@ -183,6 +188,11 @@ public class AdminController {
                 req.getProvider(),
                 req.getModelKey(),
                 req.getDisplayName(),
+                req.getBaseUrl(),
+                req.getPath(),
+                req.getProtocol(),
+                req.getApiKey(),
+                req.getClearApiKey(),
                 req.getEnabled(),
                 req.getIsDefault()
         );
@@ -207,6 +217,11 @@ public class AdminController {
         out.setProvider(item.getProvider());
         out.setModelKey(item.getModelKey());
         out.setDisplayName(item.getDisplayName());
+        out.setBaseUrl(item.getBaseUrl());
+        out.setPath(item.getPath());
+        out.setProtocol(item.getProtocol());
+        out.setHasApiKey(org.springframework.util.StringUtils.hasText(item.getApiKeyCiphertext()));
+        out.setApiKeyMask(item.getApiKeyMask());
         out.setEnabled(Boolean.TRUE.equals(item.getEnabled()));
         out.setIsDefault(Boolean.TRUE.equals(item.getIsDefault()));
         out.setCreatedAt(item.getCreatedAt());
@@ -349,6 +364,11 @@ public class AdminController {
         @NotBlank
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private String apiKey;
+        private Boolean clearApiKey;
         private Boolean enabled;
         private Boolean isDefault;
     }
@@ -359,6 +379,11 @@ public class AdminController {
         private String provider;
         private String modelKey;
         private String displayName;
+        private String baseUrl;
+        private String path;
+        private String protocol;
+        private Boolean hasApiKey;
+        private String apiKeyMask;
         private Boolean enabled;
         private Boolean isDefault;
         private java.time.LocalDateTime createdAt;
@@ -375,6 +400,8 @@ public class AdminController {
         private String mnemonic;
     }
 }
+
+
 
 
 

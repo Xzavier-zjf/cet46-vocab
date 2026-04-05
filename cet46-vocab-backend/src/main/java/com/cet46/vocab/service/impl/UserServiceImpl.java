@@ -11,6 +11,8 @@ import com.cet46.vocab.dto.response.UserInfoResponse;
 import com.cet46.vocab.entity.CloudLlmModel;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.llm.CloudLlmClient;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfig;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.llm.OllamaClient;
 import com.cet46.vocab.llm.LlmUsageTracker;
@@ -52,6 +54,7 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
+    private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
 
     public UserServiceImpl(UserMapper userMapper,
                            JdbcTemplate jdbcTemplate,
@@ -60,7 +63,8 @@ public class UserServiceImpl implements UserService {
                            OllamaClient ollamaClient,
                            PasswordEncoder passwordEncoder,
                            LlmUsageTracker llmUsageTracker,
-                           CloudLlmModelService cloudLlmModelService) {
+                           CloudLlmModelService cloudLlmModelService,
+                           CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
         this.userMapper = userMapper;
         this.jdbcTemplate = jdbcTemplate;
         this.cloudLlmClient = cloudLlmClient;
@@ -69,6 +73,7 @@ public class UserServiceImpl implements UserService {
         this.passwordEncoder = passwordEncoder;
         this.llmUsageTracker = llmUsageTracker;
         this.cloudLlmModelService = cloudLlmModelService;
+        this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
     }
 
     @Override
@@ -195,8 +200,40 @@ public class UserServiceImpl implements UserService {
         String targetModel = StringUtils.hasText(normalizedOverride)
                 ? normalizedOverride
                 : resolveUserCloudModel(user);
-        CloudLlmHealthResponse response = cloudLlmClient.healthCheck(targetModel);
-        response.setCurrentProvider(LlmProvider.normalize(user.getLlmProvider()));
+        CloudLlmRuntimeConfig runtimeConfig = cloudLlmRuntimeConfigResolver.resolve(userId, targetModel);
+        CloudLlmHealthResponse response = cloudLlmClient.healthCheck(runtimeConfig);
+        response.setCurrentProvider(runtimeConfig.provider());
+        response.setRuntimeSource(runtimeConfig.source());
+        return response;
+    }
+    @Override
+    public CloudLlmHealthResponse previewCloudLlmHealth(Long userId,
+                                                        String provider,
+                                                        String modelKey,
+                                                        String baseUrl,
+                                                        String path,
+                                                        String protocol,
+                                                        String apiKey) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new UsernameNotFoundException("user not found");
+        }
+
+        String normalizedProvider = StringUtils.hasText(provider)
+                ? provider.trim().toLowerCase()
+                : cloudLlmProperties.resolveDefaultProvider();
+        CloudLlmRuntimeConfig runtimeConfig = new CloudLlmRuntimeConfig(
+                normalizedProvider,
+                normalizeModelName(modelKey),
+                trimToNull(baseUrl),
+                trimToNull(path),
+                trimToNull(apiKey),
+                trimToNull(protocol),
+                "MANUAL_PRECHECK"
+        );
+        CloudLlmHealthResponse response = cloudLlmClient.healthCheck(runtimeConfig);
+        response.setCurrentProvider(runtimeConfig.provider());
+        response.setRuntimeSource(runtimeConfig.source());
         return response;
     }
     @Override
@@ -271,17 +308,38 @@ public class UserServiceImpl implements UserService {
                 .map(item -> LocalModelItemResponse.builder()
                         .name(item.getModelKey())
                         .displayName(item.getDisplayName())
+                        .visibility(item.getVisibility())
+                        .baseUrl(item.getBaseUrl())
+                        .path(item.getPath())
+                        .protocol(item.getProtocol())
+                        .hasApiKey(StringUtils.hasText(item.getApiKeyCiphertext()))
+                        .apiKeyMask(item.getApiKeyMask())
                         .build())
                 .toList();
         String selectedModel = cloudLlmModelService.resolveSelectedModelForUser(user.getLlmCloudModel(), userId);
         String defaultModel = cloudLlmModelService.resolveDefaultModelForUser(userId);
+        String selectedProvider = null;
+        String runtimeSource = null;
+        String runtimeBaseUrl = cloudLlmProperties.getBaseUrl();
+        if (StringUtils.hasText(selectedModel)) {
+            try {
+                CloudLlmRuntimeConfig runtimeConfig = cloudLlmRuntimeConfigResolver.resolve(userId, selectedModel);
+                selectedProvider = runtimeConfig.provider();
+                runtimeSource = runtimeConfig.source();
+                runtimeBaseUrl = runtimeConfig.baseUrl();
+            } catch (Exception ex) {
+                log.debug("failed to resolve cloud runtime config for user={}, model={}", userId, selectedModel, ex);
+            }
+        }
 
         return LocalModelListResponse.builder()
                 .serviceUp(Boolean.TRUE.equals(cloudLlmProperties.getEnabled()))
-                .baseUrl(cloudLlmProperties.getBaseUrl())
+                .baseUrl(runtimeBaseUrl)
                 .count(items.size())
                 .selectedModel(selectedModel == null ? "" : selectedModel)
                 .defaultModel(defaultModel == null ? "" : defaultModel)
+                .selectedProvider(selectedProvider)
+                .runtimeSource(runtimeSource)
                 .models(items)
                 .providers(cloudLlmProperties.resolveProviders())
                 .providerLabels(cloudLlmProperties.resolveProviderLabels())
@@ -294,13 +352,32 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public CloudLlmModel createPrivateCloudModel(Long userId, String modelKey, String displayName, Boolean enabled) {
-        return cloudLlmModelService.createPrivate(userId, modelKey, displayName, enabled);
+    public CloudLlmModel createPrivateCloudModel(Long userId,
+                                              String provider,
+                                              String modelKey,
+                                              String displayName,
+                                              String baseUrl,
+                                              String path,
+                                              String protocol,
+                                              String apiKey,
+                                              Boolean clearApiKey,
+                                              Boolean enabled) {
+        return cloudLlmModelService.createPrivate(userId, provider, modelKey, displayName, baseUrl, path, protocol, apiKey, clearApiKey, enabled);
     }
 
     @Override
-    public CloudLlmModel updatePrivateCloudModel(Long userId, Long id, String modelKey, String displayName, Boolean enabled) {
-        return cloudLlmModelService.updatePrivate(userId, id, modelKey, displayName, enabled);
+    public CloudLlmModel updatePrivateCloudModel(Long userId,
+                                              Long id,
+                                              String provider,
+                                              String modelKey,
+                                              String displayName,
+                                              String baseUrl,
+                                              String path,
+                                              String protocol,
+                                              String apiKey,
+                                              Boolean clearApiKey,
+                                              Boolean enabled) {
+        return cloudLlmModelService.updatePrivate(userId, id, provider, modelKey, displayName, baseUrl, path, protocol, apiKey, clearApiKey, enabled);
     }
 
     @Override
@@ -429,8 +506,13 @@ public class UserServiceImpl implements UserService {
         }
         return ext;
     }
-
     private String normalizeModelName(String value) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        return value.trim();
+    }
+    private String trimToNull(String value) {
         if (!StringUtils.hasText(value)) {
             return null;
         }
@@ -471,26 +553,4 @@ public class UserServiceImpl implements UserService {
         return streak;
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

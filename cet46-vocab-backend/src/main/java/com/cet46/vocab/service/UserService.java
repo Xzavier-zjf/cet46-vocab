@@ -23,6 +23,15 @@ public interface UserService {
 
     CloudLlmHealthResponse checkCloudLlmHealth(Long userId, String modelOverride);
 
+
+    CloudLlmHealthResponse previewCloudLlmHealth(Long userId,
+                                           String provider,
+                                           String modelKey,
+                                           String baseUrl,
+                                           String path,
+                                           String protocol,
+                                           String apiKey);
+
     CloudLlmHealthResponse checkLocalLlmHealth(Long userId);
 
     LocalModelListResponse getLocalModels(Long userId);
@@ -31,9 +40,28 @@ public interface UserService {
 
     List<CloudLlmModel> listPrivateCloudModels(Long userId);
 
-    CloudLlmModel createPrivateCloudModel(Long userId, String modelKey, String displayName, Boolean enabled);
+    CloudLlmModel createPrivateCloudModel(Long userId,
+                                          String provider,
+                                          String modelKey,
+                                          String displayName,
+                                          String baseUrl,
+                                          String path,
+                                          String protocol,
+                                          String apiKey,
+                                          Boolean clearApiKey,
+                                          Boolean enabled);
 
-    CloudLlmModel updatePrivateCloudModel(Long userId, Long id, String modelKey, String displayName, Boolean enabled);
+    CloudLlmModel updatePrivateCloudModel(Long userId,
+                                          Long id,
+                                          String provider,
+                                          String modelKey,
+                                          String displayName,
+                                          String baseUrl,
+                                          String path,
+                                          String protocol,
+                                          String apiKey,
+                                          Boolean clearApiKey,
+                                          Boolean enabled);
 
     CloudLlmModel setPrivateCloudModelEnabled(Long userId, Long id, Boolean enabled);
 
@@ -43,3 +71,4 @@ public interface UserService {
 
     void changePassword(Long userId, ChangePasswordRequest req);
 }
+

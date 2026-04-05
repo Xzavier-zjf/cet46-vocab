@@ -16,6 +16,7 @@ import com.cet46.vocab.entity.WordMeta;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
 import com.cet46.vocab.llm.LlmUsageTracker;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.UserMapper;
@@ -69,6 +70,7 @@ public class WordServiceImpl implements WordService {
     private final CloudLlmProperties cloudLlmProperties;
     private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
+    private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
 
     public WordServiceImpl(Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
@@ -80,7 +82,8 @@ public class WordServiceImpl implements WordService {
                            RedisTemplate<String, Object> redisTemplate,
                            CloudLlmProperties cloudLlmProperties,
                            LlmUsageTracker llmUsageTracker,
-                           CloudLlmModelService cloudLlmModelService) {
+                           CloudLlmModelService cloudLlmModelService,
+                           CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
         this.cet4WordMapper = cet4WordMapper;
         this.cet6WordMapper = cet6WordMapper;
         this.wordMetaMapper = wordMetaMapper;
@@ -92,6 +95,7 @@ public class WordServiceImpl implements WordService {
         this.cloudLlmProperties = cloudLlmProperties;
         this.llmUsageTracker = llmUsageTracker;
         this.cloudLlmModelService = cloudLlmModelService;
+        this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
     }
 
     @Override
@@ -163,20 +167,20 @@ public class WordServiceImpl implements WordService {
         }
 
         WordMeta wordMeta = selectWordMetaSafely(wordId, wordType, style);
-        boolean cloudUnavailable = isCloudUnavailable(provider, cloudModel);
+        boolean cloudUnavailable = isCloudUnavailable(userId, provider, cloudModel);
         if (cloudUnavailable) {
             wordMeta = normalizePendingWhenCloudUnavailable(wordMeta);
         }
         wordMeta = fixStuckPendingMeta(wordMeta);
         wordMeta = fixStuckPendingExplainMeta(wordMeta);
         wordMeta = fixInconsistentGeneratedStatus(wordMeta);
-        if (shouldTriggerGeneration(wordMeta, provider, cloudModel)) {
+        if (shouldTriggerGeneration(wordMeta, userId, provider, cloudModel)) {
             llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generate");
-            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel, cloudModel);
+            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
         }
-        if (shouldTriggerExplainGeneration(wordMeta, provider, cloudModel)) {
+        if (shouldTriggerExplainGeneration(wordMeta, userId, provider, cloudModel)) {
             llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generateExplain");
-            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel);
+            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
         }
 
         String pos = wordMeta != null && StringUtils.hasText(wordMeta.getPos())
@@ -849,8 +853,8 @@ public class WordServiceImpl implements WordService {
         }
     }
 
-    private boolean shouldTriggerGeneration(WordMeta wordMeta, String provider, String cloudModel) {
-        if (isCloudUnavailable(provider, cloudModel)) {
+    private boolean shouldTriggerGeneration(WordMeta wordMeta, Long userId, String provider, String cloudModel) {
+        if (isCloudUnavailable(userId, provider, cloudModel)) {
             return false;
         }
         if (wordMeta == null || !StringUtils.hasText(wordMeta.getGenStatus())) {
@@ -956,8 +960,8 @@ public class WordServiceImpl implements WordService {
         return !(sentenceOk && synonymOk && mnemonicOk);
     }
 
-    private boolean shouldTriggerExplainGeneration(WordMeta wordMeta, String provider, String cloudModel) {
-        if (isCloudUnavailable(provider, cloudModel)) {
+    private boolean shouldTriggerExplainGeneration(WordMeta wordMeta, Long userId, String provider, String cloudModel) {
+        if (isCloudUnavailable(userId, provider, cloudModel)) {
             return false;
         }
         if (wordMeta == null) {
@@ -1019,14 +1023,11 @@ public class WordServiceImpl implements WordService {
         return "full".equalsIgnoreCase(status);
     }
 
-    private boolean isCloudUnavailable(String provider, String cloudModel) {
+    private boolean isCloudUnavailable(Long userId, String provider, String cloudModel) {
         if (!LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
             return false;
         }
-        return !Boolean.TRUE.equals(cloudLlmProperties.getEnabled())
-                || !StringUtils.hasText(cloudLlmProperties.getBaseUrl())
-                || !StringUtils.hasText(cloudModel)
-                || !StringUtils.hasText(cloudLlmProperties.getApiKey());
+        return !cloudLlmRuntimeConfigResolver.isAvailable(userId, cloudModel);
     }
     private WordDetailResponse.LlmContent cloudUnavailableContent(String style) {
         return WordDetailResponse.LlmContent.builder()
@@ -1071,6 +1072,9 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
+
 
 
 

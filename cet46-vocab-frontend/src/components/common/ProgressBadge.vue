@@ -37,9 +37,9 @@ const meta = computed(() => getProgressMeta(String(props.status || '').toUpperCa
 }
 
 .progress-badge.is-learning {
-  color: var(--color-primary-strong);
-  background: color-mix(in srgb, var(--color-primary-strong) 10%, transparent);
-  border-color: color-mix(in srgb, var(--color-primary-strong) 35%, transparent);
+  color: #8a6a00;
+  background: #fff4cc;
+  border-color: #f2d67a;
 }
 
 .progress-badge.is-completed {
@@ -52,5 +52,11 @@ const meta = computed(() => getProgressMeta(String(props.status || '').toUpperCa
   color: var(--color-muted-strong);
   background: var(--color-surface-soft);
   border-color: var(--color-border-soft);
+}
+
+:global(:root.dark) .progress-badge.is-learning {
+  color: #ffe29a;
+  background: rgba(138, 104, 0, 0.34);
+  border-color: rgba(255, 214, 102, 0.46);
 }
 </style>

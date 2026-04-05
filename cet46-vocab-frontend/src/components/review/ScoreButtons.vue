@@ -63,27 +63,27 @@ defineEmits(['score'])
 }
 
 .btn-1 {
-  --score-btn-bg: #8d5c56;
-  --score-btn-text: #fdf8f7;
-  --score-btn-border: #7d4f49;
+  --score-btn-bg: #c8847e;
+  --score-btn-text: #fffaf9;
+  --score-btn-border: #ac6963;
   background: var(--score-btn-bg);
   color: var(--score-btn-text);
   border-color: var(--score-btn-border);
 }
 
 .btn-3 {
-  --score-btn-bg: #a8863e;
-  --score-btn-text: #fffaf0;
-  --score-btn-border: #8f7337;
+  --score-btn-bg: #c1a66a;
+  --score-btn-text: #fffdf4;
+  --score-btn-border: #a68e57;
   background: var(--score-btn-bg);
   color: var(--score-btn-text);
   border-color: var(--score-btn-border);
 }
 
 .btn-5 {
-  --score-btn-bg: #3f6371;
-  --score-btn-text: #f3f8fa;
-  --score-btn-border: #345461;
+  --score-btn-bg: #5f8491;
+  --score-btn-text: #f6fbfd;
+  --score-btn-border: #4d707c;
   background: var(--score-btn-bg);
   color: var(--score-btn-text);
   border-color: var(--score-btn-border);
@@ -97,43 +97,27 @@ defineEmits(['score'])
   transform: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  :global(:root.dark) .btn-1 {
-    --score-btn-bg: #7a4e49;
-    --score-btn-text: #f7e6e4;
-    --score-btn-border: #9a6862;
-  }
-
-  :global(:root.dark) .btn-3 {
-    --score-btn-bg: #8f7538;
-    --score-btn-text: #fff3d8;
-    --score-btn-border: #ad9152;
-  }
-
-  :global(:root.dark) .btn-5 {
-    --score-btn-bg: #4c7382;
-    --score-btn-text: #e9f6fb;
-    --score-btn-border: #6a93a3;
-  }
-}
-
 /* Ensure manual theme toggle to dark mode is reflected immediately. */
 :global(:root.dark) .btn-1 {
-  --score-btn-bg: #7a4e49;
-  --score-btn-text: #f7e6e4;
-  --score-btn-border: #9a6862;
+  --score-btn-bg: #8f5650;
+  --score-btn-text: #fdeeed;
+  --score-btn-border: #bc7f78;
 }
 
 :global(:root.dark) .btn-3 {
-  --score-btn-bg: #8f7538;
-  --score-btn-text: #fff3d8;
-  --score-btn-border: #ad9152;
+  --score-btn-bg: #92773e;
+  --score-btn-text: #fff5dc;
+  --score-btn-border: #bea264;
 }
 
 :global(:root.dark) .btn-5 {
-  --score-btn-bg: #4c7382;
-  --score-btn-text: #e9f6fb;
-  --score-btn-border: #6a93a3;
+  --score-btn-bg: #456977;
+  --score-btn-text: #ecf8fc;
+  --score-btn-border: #6b8f9e;
+}
+
+:global(:root.dark) .score-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
 }
 
 @media (max-width: 768px) {

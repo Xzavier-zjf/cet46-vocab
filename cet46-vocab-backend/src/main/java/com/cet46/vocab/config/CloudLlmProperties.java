@@ -17,15 +17,16 @@ import java.util.Map;
 @ConfigurationProperties("llm.cloud")
 public class CloudLlmProperties {
 
-    private static final List<String> DEFAULT_PROVIDERS = List.of("bailian");
+    private static final List<String> DEFAULT_PROVIDERS = List.of("bailian", "custom");
     private static final Map<String, String> DEFAULT_PROVIDER_LABELS = Map.of(
-            "bailian", "\u767e\u70bc",
+            "bailian", "百炼",
             "openai", "OpenAI",
             "deepseek", "DeepSeek",
             "openrouter", "OpenRouter",
             "groq", "Groq",
             "xai", "xAI",
-            "minimax", "MiniMax"
+            "minimax", "MiniMax",
+            "custom", "自定义"
     );
 
     private Boolean enabled = false;
@@ -36,6 +37,7 @@ public class CloudLlmProperties {
     private List<String> providers = new ArrayList<>();
     private Map<String, String> providerLabels = new LinkedHashMap<>();
     private String apiKey;
+    private String keySecret;
     private Duration timeout = Duration.ofSeconds(60);
     private Integer maxRetries = 1;
     private Double temperature = 0.3;
@@ -52,6 +54,17 @@ public class CloudLlmProperties {
                 System.getenv("DASHSCOPE_API_KEY"),
                 System.getProperty("ALIYUN_DASHSCOPE_API_KEY"),
                 System.getenv("ALIYUN_DASHSCOPE_API_KEY")
+        );
+        return fallback == null ? null : fallback.trim();
+    }
+
+    public String getKeySecret() {
+        if (StringUtils.hasText(keySecret)) {
+            return keySecret.trim();
+        }
+        String fallback = firstNonBlank(
+                System.getProperty("LLM_CLOUD_KEY_SECRET"),
+                System.getenv("LLM_CLOUD_KEY_SECRET")
         );
         return fallback == null ? null : fallback.trim();
     }
@@ -87,6 +100,9 @@ public class CloudLlmProperties {
         if (normalized.isEmpty()) {
             normalized.addAll(DEFAULT_PROVIDERS);
         }
+        if (!normalized.contains("custom")) {
+            normalized.add("custom");
+        }
         return normalized;
     }
 
@@ -95,6 +111,9 @@ public class CloudLlmProperties {
             return false;
         }
         String target = provider.trim().toLowerCase(Locale.ROOT);
+        if ("custom".equals(target)) {
+            return true;
+        }
         return resolveProviders().contains(target);
     }
 
@@ -156,4 +175,3 @@ public class CloudLlmProperties {
         return null;
     }
 }
-

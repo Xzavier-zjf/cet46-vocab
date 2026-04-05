@@ -44,6 +44,11 @@ class RolePermissionServiceTest {
 
     @Test
     void listRolePermissionsShouldFallbackToConfigWhenDbEmpty() {
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?"),
+                eq(Integer.class),
+                eq("rbac_role_permission")
+        )).thenReturn(1);
         when(jdbcTemplate.queryForList(anyString(), ArgumentMatchers.<Object>any(), ArgumentMatchers.<Object>any()))
                 .thenReturn(List.of());
         when(securityRbacProperties.resolvePermissions("ADMIN"))
@@ -81,6 +86,11 @@ class RolePermissionServiceTest {
 
     @Test
     void updateRolePermissionsShouldNotWriteAuditWhenNoChange() {
+        when(jdbcTemplate.queryForObject(
+                eq("SELECT COUNT(1) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?"),
+                eq(Integer.class),
+                eq("rbac_role_permission")
+        )).thenReturn(1);
         when(jdbcTemplate.queryForList(anyString(), ArgumentMatchers.<Object>any(), ArgumentMatchers.<Object>any()))
                 .thenReturn(List.of(
                         Map.of("role_code", "ADMIN", "permission_code", PrivateCloudModelPermissions.CREATE),

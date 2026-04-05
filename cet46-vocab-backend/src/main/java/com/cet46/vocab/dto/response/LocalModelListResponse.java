@@ -14,6 +14,8 @@ public class LocalModelListResponse {
     private Integer count;
     private String selectedModel;
     private String defaultModel;
+    private String selectedProvider;
+    private String runtimeSource;
     private List<LocalModelItemResponse> models;
     private List<String> providers;
     private Map<String, String> providerLabels;
