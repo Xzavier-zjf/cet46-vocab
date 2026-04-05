@@ -3,7 +3,7 @@
     <section class="admin-hero">
       <div>
         <h1>权限与角色管理</h1>
-        <p>可视化配置 USER/ADMIN 的私有云端模型权限（创建、编辑、删除、启停）。</p>
+        <p>可视化配置 USER/ADMIN 的私有模型与全局模型权限（创建、编辑、删除、启停）。</p>
       </div>
       <div class="hero-metrics">
         <article class="metric-item">
@@ -90,7 +90,10 @@ const permissionOptions = [
   { value: 'PRIVATE_CLOUD_MODEL_CREATE', label: '创建私有模型' },
   { value: 'PRIVATE_CLOUD_MODEL_EDIT', label: '编辑私有模型' },
   { value: 'PRIVATE_CLOUD_MODEL_DELETE', label: '删除私有模型' },
-  { value: 'PRIVATE_CLOUD_MODEL_TOGGLE', label: '启停私有模型' }
+  { value: 'PRIVATE_CLOUD_MODEL_TOGGLE', label: '启停私有模型' },
+  { value: 'GLOBAL_CLOUD_MODEL_CREATE', label: '创建全局模型' },
+  { value: 'GLOBAL_CLOUD_MODEL_EDIT', label: '编辑全局模型/凭证' },
+  { value: 'GLOBAL_CLOUD_MODEL_DELETE', label: '删除全局模型' }
 ]
 
 const loading = ref(false)

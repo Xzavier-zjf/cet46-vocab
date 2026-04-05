@@ -1,6 +1,7 @@
 package com.cet46.vocab.config;
 
 import com.cet46.vocab.security.PrivateCloudModelPermissions;
+import com.cet46.vocab.security.GlobalCloudModelPermissions;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -37,7 +38,8 @@ public class SecurityRbacProperties {
 
     private Map<String, List<String>> defaultRolePermissions() {
         Map<String, List<String>> defaults = new LinkedHashMap<>();
-        List<String> all = new ArrayList<>(PrivateCloudModelPermissions.ALL);
+        List<String> all = new ArrayList<>(PrivateCloudModelPermissions.ORDERED);
+        all.addAll(GlobalCloudModelPermissions.ORDERED);
         defaults.put("ADMIN", all);
         defaults.put("USER", all);
         return defaults;

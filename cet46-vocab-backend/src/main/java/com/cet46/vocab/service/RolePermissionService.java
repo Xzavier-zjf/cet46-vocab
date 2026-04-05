@@ -15,6 +15,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import com.cet46.vocab.config.SecurityRbacProperties;
+import com.cet46.vocab.security.GlobalCloudModelPermissions;
 import com.cet46.vocab.security.PrivateCloudModelPermissions;
 
 import jakarta.annotation.PostConstruct;
@@ -38,7 +39,10 @@ public class RolePermissionService {
             PrivateCloudModelPermissions.CREATE,
             PrivateCloudModelPermissions.EDIT,
             PrivateCloudModelPermissions.DELETE,
-            PrivateCloudModelPermissions.TOGGLE
+            PrivateCloudModelPermissions.TOGGLE,
+            GlobalCloudModelPermissions.CREATE,
+            GlobalCloudModelPermissions.EDIT,
+            GlobalCloudModelPermissions.DELETE
     );
 
     private final JdbcTemplate jdbcTemplate;
@@ -284,5 +288,4 @@ public class RolePermissionService {
         private LocalDateTime changedAt;
     }
 }
-
 
