@@ -7,8 +7,10 @@ import com.cet46.vocab.dto.request.UpdatePreferenceRequest;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
 import com.cet46.vocab.dto.response.LocalModelListResponse;
 import com.cet46.vocab.dto.response.LlmLastUsedResponse;
+import com.cet46.vocab.dto.response.LlmUsageStatsResponse;
 import com.cet46.vocab.dto.response.UserInfoResponse;
 import com.cet46.vocab.entity.CloudLlmModel;
+import com.cet46.vocab.service.LlmUsageStatsService;
 import com.cet46.vocab.service.UserService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -36,9 +38,12 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
+    private final LlmUsageStatsService llmUsageStatsService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService,
+                          LlmUsageStatsService llmUsageStatsService) {
         this.userService = userService;
+        this.llmUsageStatsService = llmUsageStatsService;
     }
 
     @GetMapping("/info")
@@ -224,6 +229,15 @@ public class UserController {
         return Result.success(userService.getLastUsedLlm(userId));
     }
 
+    @GetMapping("/llm/usage")
+    public Result<LlmUsageStatsResponse> getCloudModelUsage(Authentication authentication) {
+        if (authentication == null || authentication.getPrincipal() == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        Long userId = Long.valueOf(authentication.getPrincipal().toString());
+        return Result.success(llmUsageStatsService.getUserCloudUsage(userId));
+    }
+
     @PutMapping("/password")
     public Result<Void> changePassword(Authentication authentication,
                                        @Valid @RequestBody ChangePasswordRequest req) {
@@ -344,4 +358,7 @@ public class UserController {
         private LocalDateTime updatedAt;
     }
 }
+
+
+
 

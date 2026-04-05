@@ -2,8 +2,10 @@ package com.cet46.vocab.controller;
 
 import com.cet46.vocab.common.GlobalExceptionHandler;
 import com.cet46.vocab.dto.response.CloudLlmHealthResponse;
+import com.cet46.vocab.dto.response.LlmUsageStatsResponse;
 import com.cet46.vocab.entity.CloudLlmModel;
 import com.cet46.vocab.security.JwtAuthFilter;
+import com.cet46.vocab.service.LlmUsageStatsService;
 import com.cet46.vocab.service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletRequest;
@@ -39,6 +41,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -53,6 +56,9 @@ class UserControllerMockMvcTest {
 
     @MockBean
     private UserService userService;
+
+    @MockBean
+    private LlmUsageStatsService llmUsageStatsService;
 
     @MockBean
     private JwtAuthFilter jwtAuthFilter;
@@ -70,9 +76,9 @@ class UserControllerMockMvcTest {
     void updatePrivateCloudModelFull_shouldForbidWithoutEditPermission() throws Exception {
         String body = """
                 {
-                  "modelKey": "qwen-max",
-                  "displayName": "Qwen Max",
-                  "enabled": true
+                  \"modelKey\": \"qwen-max\",
+                  \"displayName\": \"Qwen Max\",
+                  \"enabled\": true
                 }
                 """;
 
@@ -91,9 +97,9 @@ class UserControllerMockMvcTest {
     void updatePrivateCloudModelFull_shouldReturnForbiddenCodeWhenMissingTogglePermission() throws Exception {
         String body = """
                 {
-                  "modelKey": "qwen-max",
-                  "displayName": "Qwen Max",
-                  "enabled": true
+                  \"modelKey\": \"qwen-max\",
+                  \"displayName\": \"Qwen Max\",
+                  \"enabled\": true
                 }
                 """;
 
@@ -125,9 +131,9 @@ class UserControllerMockMvcTest {
 
         String body = """
                 {
-                  "modelKey": "qwen-max",
-                  "displayName": "Qwen Max",
-                  "enabled": true
+                  \"modelKey\": \"qwen-max\",
+                  \"displayName\": \"Qwen Max\",
+                  \"enabled\": true
                 }
                 """;
 
@@ -161,9 +167,9 @@ class UserControllerMockMvcTest {
     void updatePrivateCloudModelFull_shouldRejectBlankModelKeyByRequestValidation() throws Exception {
         String body = """
                 {
-                  "modelKey": "   ",
-                  "displayName": "Qwen Max",
-                  "enabled": false
+                  \"modelKey\": \"   \",
+                  \"displayName\": \"Qwen Max\",
+                  \"enabled\": false
                 }
                 """;
 
@@ -182,11 +188,11 @@ class UserControllerMockMvcTest {
     void previewCloudModelHealth_shouldForbidWithoutPermission() throws Exception {
         String body = """
                 {
-                  "provider": "bailian",
-                  "modelKey": "qwen-max",
-                  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                  "path": "/chat/completions",
-                  "apiKey": "sk-123"
+                  \"provider\": \"bailian\",
+                  \"modelKey\": \"qwen-max\",
+                  \"baseUrl\": \"https://dashscope.aliyuncs.com/compatible-mode/v1\",
+                  \"path\": \"/chat/completions\",
+                  \"apiKey\": \"sk-123\"
                 }
                 """;
 
@@ -225,12 +231,12 @@ class UserControllerMockMvcTest {
 
         String body = """
                 {
-                  "provider": "bailian",
-                  "modelKey": "qwen-max",
-                  "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                  "path": "/chat/completions",
-                  "protocol": "openai-compatible",
-                  "apiKey": "sk-123"
+                  \"provider\": \"bailian\",
+                  \"modelKey\": \"qwen-max\",
+                  \"baseUrl\": \"https://dashscope.aliyuncs.com/compatible-mode/v1\",
+                  \"path\": \"/chat/completions\",
+                  \"protocol\": \"openai-compatible\",
+                  \"apiKey\": \"sk-123\"
                 }
                 """;
 
@@ -254,6 +260,33 @@ class UserControllerMockMvcTest {
                 eq("sk-123")
         );
     }
+
+    @Test
+    void getCloudModelUsage_shouldReturnUserScopedStats() throws Exception {
+        LlmUsageStatsResponse response = LlmUsageStatsResponse.builder()
+                .viewRole("USER")
+                .summary(LlmUsageStatsResponse.Summary.builder()
+                        .totalCallsToday(2L)
+                        .totalCalls7d(5L)
+                        .totalCalls30d(9L)
+                        .publicCalls30d(6L)
+                        .privateCalls30d(3L)
+                        .activeModels(2)
+                        .build())
+                .build();
+        when(llmUsageStatsService.getUserCloudUsage(1001L)).thenReturn(response);
+
+        mockMvc.perform(get("/user/llm/usage")
+                        .with(authWith()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.data.viewRole").value("USER"))
+                .andExpect(jsonPath("$.data.summary.totalCalls30d").value(9))
+                .andExpect(jsonPath("$.data.summary.privateCalls30d").value(3));
+
+        verify(llmUsageStatsService).getUserCloudUsage(1001L);
+    }
+
     private RequestPostProcessor authWith(String... authorities) {
         List<GrantedAuthority> grantedAuthorities = Arrays.stream(authorities)
                 .map(item -> (GrantedAuthority) new SimpleGrantedAuthority(item))
@@ -276,4 +309,3 @@ class UserControllerMockMvcTest {
         }
     }
 }
-

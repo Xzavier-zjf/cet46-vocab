@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.cet46.vocab.common.PageResult;
 import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
+import com.cet46.vocab.dto.response.LlmUsageStatsResponse;
 import com.cet46.vocab.entity.Cet4Word;
 import com.cet46.vocab.entity.Cet6Word;
 import com.cet46.vocab.entity.CloudLlmModel;
@@ -16,6 +17,7 @@ import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
 import com.cet46.vocab.service.CloudLlmModelService;
+import com.cet46.vocab.service.LlmUsageStatsService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -55,14 +57,16 @@ public class AdminController {
     private final Cet6WordMapper cet6WordMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final CloudLlmModelService cloudLlmModelService;
+    private final LlmUsageStatsService llmUsageStatsService;
 
-    public AdminController(LlmAsyncService llmAsyncService,
+        public AdminController(LlmAsyncService llmAsyncService,
                            LlmCacheService llmCacheService,
                            WordMetaMapper wordMetaMapper,
                            Cet4WordMapper cet4WordMapper,
                            Cet6WordMapper cet6WordMapper,
                            RedisTemplate<String, Object> redisTemplate,
-                           CloudLlmModelService cloudLlmModelService) {
+                           CloudLlmModelService cloudLlmModelService,
+                           LlmUsageStatsService llmUsageStatsService) {
         this.llmAsyncService = llmAsyncService;
         this.llmCacheService = llmCacheService;
         this.wordMetaMapper = wordMetaMapper;
@@ -70,6 +74,7 @@ public class AdminController {
         this.cet6WordMapper = cet6WordMapper;
         this.redisTemplate = redisTemplate;
         this.cloudLlmModelService = cloudLlmModelService;
+        this.llmUsageStatsService = llmUsageStatsService;
     }
 
     @PostMapping("/batch-generate")
@@ -162,6 +167,11 @@ public class AdminController {
                 .map(this::toCloudModelItem)
                 .collect(Collectors.toList());
         return Result.success(items);
+    }
+
+    @GetMapping("/usage")
+    public Result<LlmUsageStatsResponse> getCloudUsage() {
+        return Result.success(llmUsageStatsService.getAdminCloudUsage());
     }
 
     @PostMapping("/cloud-models")
@@ -405,11 +415,3 @@ public class AdminController {
         private String mnemonic;
     }
 }
-
-
-
-
-
-
-
-

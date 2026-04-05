@@ -13,9 +13,9 @@ import com.cet46.vocab.entity.Cet4Word;
 import com.cet46.vocab.entity.Cet6Word;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.WordMeta;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfig;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
-import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.mapper.Cet4WordMapper;
 import com.cet46.vocab.mapper.Cet6WordMapper;
@@ -68,7 +68,6 @@ public class WordServiceImpl implements WordService {
     private final ObjectMapper objectMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final CloudLlmProperties cloudLlmProperties;
-    private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
     private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
 
@@ -81,7 +80,6 @@ public class WordServiceImpl implements WordService {
                            ObjectMapper objectMapper,
                            RedisTemplate<String, Object> redisTemplate,
                            CloudLlmProperties cloudLlmProperties,
-                           LlmUsageTracker llmUsageTracker,
                            CloudLlmModelService cloudLlmModelService,
                            CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
         this.cet4WordMapper = cet4WordMapper;
@@ -92,9 +90,7 @@ public class WordServiceImpl implements WordService {
         this.jdbcTemplate = jdbcTemplate;
         this.objectMapper = objectMapper;
         this.redisTemplate = redisTemplate;
-        this.cloudLlmProperties = cloudLlmProperties;
-        this.llmUsageTracker = llmUsageTracker;
-        this.cloudLlmModelService = cloudLlmModelService;
+        this.cloudLlmProperties = cloudLlmProperties;        this.cloudLlmModelService = cloudLlmModelService;
         this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
     }
 
@@ -174,13 +170,9 @@ public class WordServiceImpl implements WordService {
         wordMeta = fixStuckPendingMeta(wordMeta);
         wordMeta = fixStuckPendingExplainMeta(wordMeta);
         wordMeta = fixInconsistentGeneratedStatus(wordMeta);
-        if (shouldTriggerGeneration(wordMeta, userId, provider, cloudModel)) {
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generate");
-            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
+        if (shouldTriggerGeneration(wordMeta, userId, provider, cloudModel)) {            llmAsyncService.generateWordContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
         }
-        if (shouldTriggerExplainGeneration(wordMeta, userId, provider, cloudModel)) {
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.detail.generateExplain");
-            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
+        if (shouldTriggerExplainGeneration(wordMeta, userId, provider, cloudModel)) {            llmAsyncService.generateWordExplainContent(wordId, wordType, style, provider, localModel, cloudModel, userId);
         }
 
         String pos = wordMeta != null && StringUtils.hasText(wordMeta.getPos())
@@ -798,17 +790,6 @@ public class WordServiceImpl implements WordService {
         }
         return cloudLlmModelService.resolveSelectedModelForUser(user.getLlmCloudModel(), userId);
     }
-    private String resolveUsedModel(String provider, String localModel, String cloudModel) {
-        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
-            return cloudModel;
-        }
-        if (StringUtils.hasText(localModel)) {
-            return localModel.trim();
-        }
-        return null;
-    }
-
-
 
     private WordBase loadWordBase(Long wordId, String wordType) {
         WordType type = WordType.from(wordType);
@@ -1072,6 +1053,11 @@ public class WordServiceImpl implements WordService {
         return StringUtils.hasText(wordMeta.getAiExplain()) ? "full" : "fallback";
     }
 }
+
+
+
+
+
 
 
 

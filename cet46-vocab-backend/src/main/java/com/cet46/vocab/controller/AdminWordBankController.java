@@ -9,6 +9,8 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
@@ -32,6 +34,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/admin/word-bank")
 public class AdminWordBankController {
+
+    private static final Logger log = LoggerFactory.getLogger(AdminWordBankController.class);
 
     private final JdbcTemplate jdbcTemplate;
     private final LlmAsyncService llmAsyncService;
@@ -62,7 +66,8 @@ public class AdminWordBankController {
             data.put("samples", parsed.samples);
             return Result.success(data);
         } catch (Exception ex) {
-            return Result.fail(ResultCode.INTERNAL_ERROR.getCode(), "preview failed: " + ex.getMessage());
+            log.warn("word-bank preview failed, wordType={}", normalizedType, ex);
+            return Result.fail(ResultCode.INTERNAL_ERROR.getCode(), "preview failed");
         }
     }
 
@@ -123,7 +128,8 @@ public class AdminWordBankController {
             data.put("errors", parsed.errors);
             return Result.success(data);
         } catch (Exception ex) {
-            return Result.fail(ResultCode.INTERNAL_ERROR.getCode(), "import failed: " + ex.getMessage());
+            log.warn("word-bank import failed, wordType={}", normalizedType, ex);
+            return Result.fail(ResultCode.INTERNAL_ERROR.getCode(), "import failed");
         }
     }
 
@@ -517,6 +523,9 @@ public class AdminWordBankController {
         private Integer limit = 100;
     }
 }
+
+
+
 
 
 

@@ -1,6 +1,7 @@
 package com.cet46.vocab.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.entity.CloudLlmModel;
 import com.cet46.vocab.entity.CloudLlmProviderCredential;
@@ -504,11 +505,7 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         model.setApiKeyMask(cloudApiKeyCipher.mask(trimmed));
     }
 
-    private void syncProviderCredential(String visibility,
-                                        Long ownerUserId,
-                                        String provider,
-                                        String apiKey,
-                                        Boolean clearApiKey) {
+    private void syncProviderCredential(String visibility, Long ownerUserId, String provider, String apiKey, Boolean clearApiKey) {
         if (!StringUtils.hasText(provider)) {
             return;
         }
@@ -520,21 +517,17 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         if (normalizedOwnerUserId == null || normalizedOwnerUserId <= 0 && VISIBILITY_USER_PRIVATE.equals(normalizedVisibility)) {
             return;
         }
-
-        if (Boolean.TRUE.equals(clearApiKey) || (apiKey != null && !StringUtils.hasText(apiKey.trim()))) {
-            cloudLlmProviderCredentialMapper.delete(
-                    new LambdaQueryWrapper<CloudLlmProviderCredential>()
-                            .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
-                            .eq(CloudLlmProviderCredential::getOwnerUserId, normalizedOwnerUserId)
-                            .eq(CloudLlmProviderCredential::getProvider, normalizedProvider)
-            );
+        if (shouldClearProviderCredential(apiKey, clearApiKey)) {
+            deleteProviderCredential(normalizedVisibility, normalizedOwnerUserId, normalizedProvider);
             return;
         }
-
         if (apiKey == null) {
             return;
         }
         String trimmedKey = apiKey.trim();
+        if (!StringUtils.hasText(trimmedKey)) {
+            return;
+        }
         CloudLlmProviderCredential existing = cloudLlmProviderCredentialMapper.selectOne(
                 new LambdaQueryWrapper<CloudLlmProviderCredential>()
                         .eq(CloudLlmProviderCredential::getVisibility, normalizedVisibility)
@@ -556,6 +549,25 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         existing.setApiKeyCiphertext(cloudApiKeyCipher.encrypt(trimmedKey));
         existing.setApiKeyMask(cloudApiKeyCipher.mask(trimmedKey));
         cloudLlmProviderCredentialMapper.updateById(existing);
+    }
+
+    private boolean shouldClearProviderCredential(String apiKey, Boolean clearApiKey) {
+        return Boolean.TRUE.equals(clearApiKey) || (apiKey != null && !StringUtils.hasText(apiKey.trim()));
+    }
+
+    private void deleteProviderCredential(String visibility, Long ownerUserId, String provider) {
+        QueryWrapper<CloudLlmProviderCredential> wrapper = new QueryWrapper<CloudLlmProviderCredential>()
+                .eq("visibility", visibility)
+                .eq("provider", provider);
+        if (VISIBILITY_GLOBAL.equals(visibility)) {
+            wrapper.and(scope -> scope
+                    .eq("owner_user_id", 0L)
+                    .or()
+                    .isNull("owner_user_id"));
+        } else {
+            wrapper.eq("owner_user_id", ownerUserId);
+        }
+        cloudLlmProviderCredentialMapper.delete(wrapper);
     }
 
     private String normalizeProvider(String provider) {
@@ -631,3 +643,4 @@ public class CloudLlmModelServiceImpl implements CloudLlmModelService {
         return value;
     }
 }
+

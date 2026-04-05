@@ -69,10 +69,13 @@ public class DailyPlanScheduler {
                                 today
                         );
                         long count = dueCount == null ? 0L : dueCount;
+                        int dailyTarget = queryDailyTarget(userId);
+                        int reviewedCount = queryReviewedCount(userId, today);
 
                         String key = "plan:daily:" + userId + ":" + today;
                         String value = buildValue(count, generatedAt);
                         redisTemplate.opsForValue().set(key, value, Duration.ofDays(1));
+                        upsertDailyPlanCache(userId, today, count, dailyTarget, reviewedCount, generatedAt);
                     } catch (Exception ex) {
                         log.error("generate daily plan failed for userId={}", userId, ex);
                     }
@@ -90,5 +93,58 @@ public class DailyPlanScheduler {
         value.put("dueCount", dueCount);
         value.put("generatedAt", generatedAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         return objectMapper.writeValueAsString(value);
+    }
+
+    private int queryDailyTarget(Long userId) {
+        Integer value = jdbcTemplate.queryForObject(
+                "SELECT daily_target FROM user WHERE id = ? LIMIT 1",
+                Integer.class,
+                userId
+        );
+        if (value == null || value <= 0) {
+            return 20;
+        }
+        return value;
+    }
+
+    private int queryReviewedCount(Long userId, LocalDate day) {
+        Integer value = jdbcTemplate.queryForObject(
+                "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND DATE(reviewed_at) = ?",
+                Integer.class,
+                userId,
+                day
+        );
+        return value == null ? 0 : Math.max(value, 0);
+    }
+
+    private void upsertDailyPlanCache(Long userId,
+                                      LocalDate day,
+                                      long dueCount,
+                                      int dailyTarget,
+                                      int reviewedCount,
+                                      LocalDateTime generatedAt) {
+        jdbcTemplate.update(
+                "INSERT INTO daily_plan_cache (user_id, plan_date, due_count, reviewed_count, daily_target, completion_rate, generated_at, last_synced_at) " +
+                        "VALUES (?, ?, ?, ?, ?, CASE WHEN ? <= 0 THEN 0 ELSE LEAST(100, ROUND(? * 100.0 / ?, 2)) END, ?, NOW()) " +
+                        "ON DUPLICATE KEY UPDATE " +
+                        "due_count = VALUES(due_count), " +
+                        "daily_target = VALUES(daily_target), " +
+                        "reviewed_count = GREATEST(reviewed_count, VALUES(reviewed_count)), " +
+                        "completion_rate = CASE " +
+                        "  WHEN VALUES(due_count) <= 0 THEN 0 " +
+                        "  ELSE LEAST(100, ROUND(GREATEST(reviewed_count, VALUES(reviewed_count)) * 100.0 / VALUES(due_count), 2)) " +
+                        "END, " +
+                        "generated_at = VALUES(generated_at), " +
+                        "last_synced_at = NOW()",
+                userId,
+                day,
+                dueCount,
+                reviewedCount,
+                dailyTarget,
+                dueCount,
+                reviewedCount,
+                dueCount,
+                generatedAt
+        );
     }
 }

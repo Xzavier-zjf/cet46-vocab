@@ -373,7 +373,8 @@
 import { computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { assistantChat } from '@/api/assistant'
+import { assistantChat, assistantGetState, assistantSyncState } from '@/api/assistant'
+import { createInFlightQueue } from '@/utils/inFlightQueue'
 import request from '@/api/request'
 import BtnPrimary from '@/components/common/BtnPrimary.vue'
 import BtnSecondary from '@/components/common/BtnSecondary.vue'
@@ -420,7 +421,12 @@ const groupBulkTargetId = ref('')
 const state = loadState()
 const sessions = ref(state.sessions)
 const groups = ref(state.groups)
-const activeSessionId = ref('')
+const activeSessionId = ref(loadActiveSessionId())
+let skipRemoteSync = true
+let syncTimer = null
+const syncQueue = createInFlightQueue(() => {
+  scheduleRemoteSync()
+})
 
 const routeWordContext = computed(() => ({
   wordId: toNumber(route.query.wordId),
@@ -502,7 +508,38 @@ const quickQuestions = computed(() => {
     '四六级阅读和写作如何分配时间？'
   ]
 })
-initSession()
+
+async function bootstrapState() {
+  skipRemoteSync = true
+  try {
+    const res = await assistantGetState()
+    const remote = normalizeState(res?.data || {})
+    if (remote.sessions.length > 0) {
+      sessions.value = remote.sessions
+      groups.value = remote.groups
+      if (!activeSessionId.value || !sessions.value.some((s) => s.id === activeSessionId.value)) {
+        const fallback = sortForDefaultActivate(sessions.value)[0]
+        activeSessionId.value = fallback?.id || ''
+      }
+      if (!activeSessionId.value) {
+        initSession()
+      } else {
+        persistState()
+      }
+      return
+    }
+  } catch {
+    // Ignore remote load failures and keep local-first boot.
+  }
+
+  initSession()
+  persistState()
+  await syncStateToRemote({ immediate: true, silent: true })
+}
+
+bootstrapState().finally(() => {
+  skipRemoteSync = false
+})
 
 function initSession() {
   const hasRouteWord = !!routeWordContext.value.word && !!routeWordContext.value.wordId
@@ -1457,6 +1494,73 @@ function persistState() {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
   localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId.value || '')
+  if (!skipRemoteSync) {
+    scheduleRemoteSync()
+  }
+}
+
+function scheduleRemoteSync() {
+  if (skipRemoteSync) return
+  if (syncTimer) {
+    clearTimeout(syncTimer)
+  }
+  syncTimer = setTimeout(() => {
+    syncTimer = null
+    syncStateToRemote({ immediate: true, silent: true })
+  }, 500)
+}
+
+function buildStatePayload() {
+  const sessionsPayload = sessions.value
+    .filter((s) => s?.id)
+    .slice(0, 100)
+    .map((session) => ({
+      id: String(session.id),
+      title: String(session.title || ''),
+      updatedAt: Number(session.updatedAt || Date.now()),
+      hasInteraction: !!session.hasInteraction,
+      pinned: !!session.pinned,
+      groupId: session.groupId || null,
+      context: session.context || {},
+      messages: (Array.isArray(session.messages) ? session.messages : [])
+        .filter((m) => m && m.id != null)
+        .slice(0, 500)
+        .map((m) => ({
+          id: String(m.id),
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: String(m.content || ''),
+          feedback: String(m.feedback || ''),
+          autoContinued: !!m.autoContinued,
+          continuationRounds: toSafeContinuationRounds(m.continuationRounds)
+        }))
+    }))
+  const groupsPayload = groups.value
+    .filter((g) => g?.id && g?.name)
+    .slice(0, 100)
+    .map((g) => ({
+      id: String(g.id),
+      name: String(g.name),
+      createdAt: Number(g.createdAt || Date.now())
+    }))
+  return {
+    clientSyncAt: Date.now(),
+    sessions: sessionsPayload,
+    groups: groupsPayload
+  }
+}
+
+async function syncStateToRemote({ immediate = false, silent = true } = {}) {
+  if (skipRemoteSync && !immediate) return
+  if (!syncQueue.tryStart()) return
+  try {
+    await assistantSyncState(buildStatePayload(), { silentError: silent })
+  } catch (error) {
+    if (!silent) {
+      ElMessage.warning(error?.businessMessage || error?.message || '会话同步失败，已保留本地记录')
+    }
+  } finally {
+    syncQueue.finish()
+  }
 }
 
 function formatTime(ts) {

@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 @RestController
 @RequestMapping("/dashboard")
@@ -99,7 +98,21 @@ public class DashboardController {
         int learning = learningCount == null ? 0 : learningCount;
         int totalLearned = learning + mastered;
 
-        int due = learning;
+        LocalDate today = LocalDate.now();
+        DailyPlanSnapshot planSnapshot;
+        try {
+            planSnapshot = loadDailyPlanSnapshot(userId, today, dailyTarget);
+        } catch (Exception ex) {
+            int fallbackDue = learning;
+            int fallbackReviewed = queryInt(
+                    "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND DATE(reviewed_at) = ?",
+                    userId,
+                    today
+            );
+            double fallbackCompletion = fallbackDue <= 0 ? 0d : Math.min(100d, round2((double) fallbackReviewed * 100d / fallbackDue));
+            planSnapshot = new DailyPlanSnapshot(Math.max(fallbackDue, 0), Math.max(fallbackReviewed, 0), fallbackCompletion);
+        }
+        int due = planSnapshot.dueCount();
         int target = dailyTarget <= 0 ? 20 : dailyTarget;
         int pressureIndex = BigDecimal.valueOf((double) due * 100 / target)
                 .setScale(0, RoundingMode.HALF_UP)
@@ -119,6 +132,10 @@ public class DashboardController {
         data.put("streakDays", streakDays == null ? 0 : streakDays);
         data.put("totalLearned", totalLearned);
         data.put("masteredCount", mastered);
+        data.put("dailyPlanDate", today.toString());
+        data.put("dailyPlanTotal", planSnapshot.dueCount());
+        data.put("dailyPlanReviewed", planSnapshot.reviewedCount());
+        data.put("dailyPlanCompletionRate", planSnapshot.completionRate());
         int weeklyDone = weeklyReviewed == null ? 0 : weeklyReviewed;
         data.put("weeklyReport", "\u672C\u5468\u4F60\u5DF2\u5B8C\u6210 " + weeklyDone + " \u6B21\u590D\u4E60\uFF0C\u7D2F\u8BA1\u638C\u63E1 " + mastered + " \u4E2A\u5355\u8BCD\u3002\u7EE7\u7EED\u4FDD\u6301\uFF0C\u6309\u8BA1\u5212\u590D\u4E60\u4F1A\u66F4\u7A33\u3002");
         data.put("pressureAlert", pressureAlert);
@@ -185,11 +202,59 @@ public class DashboardController {
         return val == null ? 0 : val;
     }
 
+    private DailyPlanSnapshot loadDailyPlanSnapshot(Long userId, LocalDate day, int dailyTarget) {
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT due_count, reviewed_count, completion_rate FROM daily_plan_cache WHERE user_id = ? AND plan_date = ? LIMIT 1",
+                userId,
+                day
+        );
+        if (!rows.isEmpty()) {
+            Map<String, Object> row = rows.get(0);
+            int due = row.get("due_count") == null ? 0 : ((Number) row.get("due_count")).intValue();
+            int reviewed = row.get("reviewed_count") == null ? 0 : ((Number) row.get("reviewed_count")).intValue();
+            double completion = row.get("completion_rate") == null ? 0d : ((Number) row.get("completion_rate")).doubleValue();
+            return new DailyPlanSnapshot(Math.max(due, 0), Math.max(reviewed, 0), completion);
+        }
+
+        int due = queryInt(
+                "SELECT COUNT(1) FROM user_word_progress WHERE user_id = ? AND next_review_date <= ?",
+                userId,
+                day
+        );
+        int reviewed = queryInt(
+                "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND DATE(reviewed_at) = ?",
+                userId,
+                day
+        );
+        double completion = due <= 0 ? 0d : Math.min(100d, round2((double) reviewed * 100d / due));
+
+        jdbcTemplate.update(
+                "INSERT INTO daily_plan_cache (user_id, plan_date, due_count, reviewed_count, daily_target, completion_rate, generated_at, last_synced_at) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW()) " +
+                        "ON DUPLICATE KEY UPDATE reviewed_count = VALUES(reviewed_count), daily_target = VALUES(daily_target), " +
+                        "completion_rate = VALUES(completion_rate), last_synced_at = NOW()",
+                userId,
+                day,
+                due,
+                reviewed,
+                dailyTarget <= 0 ? 20 : dailyTarget,
+                completion
+        );
+        return new DailyPlanSnapshot(Math.max(due, 0), Math.max(reviewed, 0), completion);
+    }
+
+    private double round2(double value) {
+        return BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue();
+    }
+
     private Long getUserId(Authentication authentication) {
         if (authentication == null || authentication.getPrincipal() == null) {
             return null;
         }
         return Long.valueOf(authentication.getPrincipal().toString());
+    }
+
+    private record DailyPlanSnapshot(int dueCount, int reviewedCount, double completionRate) {
     }
 }
 

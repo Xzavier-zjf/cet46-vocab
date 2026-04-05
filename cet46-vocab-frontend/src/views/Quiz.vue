@@ -184,7 +184,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
-import { generateQuiz, submitQuiz } from '@/api/quiz'
+import { generateQuiz, getQuizHistory, getQuizHistoryDetail, submitQuiz } from '@/api/quiz'
 import { useUserStore } from '@/stores/user'
 import { getToken } from '@/utils/token'
 import { speakWord } from '@/utils/speech'
@@ -195,7 +195,6 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const QUIZ_SESSION_STORAGE_PREFIX = 'quiz:session:'
-const QUIZ_HISTORY_STORAGE_PREFIX = 'quiz:history:'
 const QUIZ_HISTORY_LIMIT = 20
 const allowedStates = new Set(['setup', 'loading', 'question', 'answered', 'submitting', 'result'])
 
@@ -254,11 +253,6 @@ const getQuizSessionStorageKey = () => {
   return `${QUIZ_SESSION_STORAGE_PREFIX}${userStore.userId || token || 'anonymous'}`
 }
 
-const getQuizHistoryStorageKey = () => {
-  const token = getToken() || ''
-  return `${QUIZ_HISTORY_STORAGE_PREFIX}${userStore.userId || token || 'anonymous'}`
-}
-
 const resetRuntime = () => {
   quizId.value = ''
   questions.value = []
@@ -289,28 +283,12 @@ const persistSession = () => {
   localStorage.setItem(getQuizSessionStorageKey(), JSON.stringify(snapshot()))
 }
 
-const persistHistory = () => {
-  localStorage.setItem(getQuizHistoryStorageKey(), JSON.stringify(quizHistory.value))
-}
-
-const restoreHistory = () => {
-  const raw = localStorage.getItem(getQuizHistoryStorageKey())
-  if (!raw) {
-    quizHistory.value = []
-    return
-  }
+const loadHistory = async () => {
   try {
-    const parsed = JSON.parse(raw)
-    if (Array.isArray(parsed)) {
-      quizHistory.value = parsed
-        .filter((item) => item && item.id)
-        .slice(0, QUIZ_HISTORY_LIMIT)
-    } else {
-      quizHistory.value = []
-    }
+    const res = await getQuizHistory(QUIZ_HISTORY_LIMIT)
+    quizHistory.value = Array.isArray(res?.data) ? res.data : []
   } catch {
     quizHistory.value = []
-    localStorage.removeItem(getQuizHistoryStorageKey())
   }
 }
 
@@ -321,61 +299,16 @@ const formatHistoryTime = (value) => {
   return date.toLocaleString()
 }
 
-const normalizeAnswer = (value) => String(value || '').trim().toLowerCase()
-
-const resolveChoiceText = (question, choiceId) => {
-  if (!question || !Array.isArray(question.options)) return String(choiceId || '-')
-  const found = question.options.find((opt) => String(opt?.id || '') === String(choiceId || ''))
-  return found?.text || String(choiceId || '-')
-}
-
-const buildHistoryDetails = () => {
-  const answerMap = new Map(
-    answers.value
-      .filter((item) => item?.questionId)
-      .map((item) => [String(item.questionId), item.userAnswer])
-  )
-
-  return questions.value.map((question, idx) => {
-    const questionId = String(question?.questionId || '')
-    const mode = question?.mode || setup.mode
-    const userRaw = answerMap.get(questionId) ?? ''
-    const correctRaw = mode === 'choice' ? getCorrectChoiceId(question) : (question?.correctAnswer || '')
-    const userAnswer = mode === 'choice' ? resolveChoiceText(question, userRaw) : String(userRaw || '-')
-    const correctAnswer = mode === 'choice' ? resolveChoiceText(question, correctRaw) : String(correctRaw || '-')
-    const isCorrect = mode === 'choice'
-      ? String(userRaw || '') === String(correctRaw || '')
-      : normalizeAnswer(userRaw) === normalizeAnswer(correctRaw)
-
-    return {
-      index: idx + 1,
-      english: question?.english || '-',
-      userAnswer,
-      correctAnswer,
-      isCorrect
-    }
-  })
-}
-
-const pushHistoryRecord = () => {
-  const record = {
-    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-    finishedAt: new Date().toISOString(),
-    wordType: setup.wordType,
-    mode: setup.mode,
-    count: questions.value.length,
-    total: result.total,
-    correct: result.correct,
-    wrongCount: Math.max(result.total - result.correct, 0),
-    details: buildHistoryDetails()
+const openHistoryDetail = async (record) => {
+  if (!record?.id) return
+  try {
+    const res = await getQuizHistoryDetail(record.id)
+    historyDetailRecord.value = res?.data || record
+    historyDetailVisible.value = true
+  } catch {
+    historyDetailRecord.value = record || null
+    historyDetailVisible.value = true
   }
-  quizHistory.value = [record, ...quizHistory.value].slice(0, QUIZ_HISTORY_LIMIT)
-  persistHistory()
-}
-
-const openHistoryDetail = (record) => {
-  historyDetailRecord.value = record || null
-  historyDetailVisible.value = true
 }
 
 const normalizeRestoredState = () => {
@@ -500,13 +433,13 @@ const nextQuestion = async () => {
     result.total = Number(res?.data?.total || questions.value.length)
     result.correct = Number(res?.data?.correct || 0)
     result.wrongWords = Array.isArray(res?.data?.wrongWords) ? res.data.wrongWords : []
-    pushHistoryRecord()
+    await loadHistory()
     state.value = 'result'
   } catch {
     result.total = questions.value.length
     result.correct = 0
     result.wrongWords = []
-    pushHistoryRecord()
+    await loadHistory()
     state.value = 'result'
   }
 }
@@ -536,7 +469,7 @@ const handleSpeak = (word, accent) => {
 watch(snapshot, persistSession, { deep: true })
 
 onMounted(() => {
-  restoreHistory()
+  loadHistory()
   restoreSession()
 })
 </script>

@@ -3,7 +3,7 @@ import { useUserStore } from '@/stores/user'
 import { useThemeStore } from '@/stores/theme'
 
 const MENU_ROUTE_MEMORY_KEY = 'menu:last-routes'
-const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/assistant', '/stats', '/profile', '/admin/users', '/admin/permissions', '/admin']
+const MENU_ROOTS = ['/dashboard', '/learn', '/words', '/review', '/quiz', '/assistant', '/stats', '/profile', '/model-usage', '/admin/users', '/admin/permissions', '/admin']
 
 const getMenuRoot = (path) => MENU_ROOTS.find((root) => path === root || path.startsWith(`${root}/`))
 
@@ -32,6 +32,7 @@ const routes = [
   { path: '/assistant', name: 'Assistant', component: () => import('@/views/Assistant.vue'), meta: { requiresAuth: true } },
   { path: '/stats', name: 'Statistics', component: () => import('@/views/Statistics.vue'), meta: { requiresAuth: true } },
   { path: '/profile', name: 'Profile', component: () => import('@/views/Profile.vue'), meta: { requiresAuth: true } },
+  { path: '/model-usage', name: 'ModelUsage', component: () => import('@/views/ModelUsage.vue'), meta: { requiresAuth: true } },
   { path: '/admin', name: 'AdminDashboard', component: () => import('@/views/admin/AdminDashboard.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/admin/users', name: 'AdminUsers', component: () => import('@/views/admin/UserManagement.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
   { path: '/admin/permissions', name: 'AdminPermissions', component: () => import('@/views/admin/RolePermissionManagement.vue'), meta: { requiresAuth: true, role: 'ADMIN' } },
@@ -116,7 +117,7 @@ router.beforeEach(async (to, from, next) => {
   }
 
   if (hasToken && userStore.role === 'ADMIN') {
-    const allowList = ['/admin', '/admin/users', '/admin/permissions', '/profile', '/onboarding']
+    const allowList = ['/admin', '/admin/users', '/admin/permissions', '/profile', '/model-usage', '/onboarding']
     if (!allowList.some((path) => to.path === path || to.path.startsWith(`${path}/`))) {
       next('/admin')
       return
@@ -135,4 +136,5 @@ router.afterEach((to) => {
 })
 
 export default router
+
 

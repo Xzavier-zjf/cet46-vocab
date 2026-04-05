@@ -13,9 +13,9 @@ import com.cet46.vocab.dto.response.WordListItem;
 import com.cet46.vocab.dto.response.WordProgressStatusResponse;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.entity.WordMeta;
+import com.cet46.vocab.llm.CloudLlmRuntimeConfig;
 import com.cet46.vocab.llm.LlmAsyncService;
 import com.cet46.vocab.llm.LlmProvider;
-import com.cet46.vocab.llm.LlmUsageTracker;
 import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.mapper.UserMapper;
 import com.cet46.vocab.mapper.WordMetaMapper;
@@ -47,7 +47,6 @@ public class WordController {
     private final UserMapper userMapper;
     private final WordMetaMapper wordMetaMapper;
     private final CloudLlmProperties cloudLlmProperties;
-    private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
     private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
 
@@ -56,16 +55,13 @@ public class WordController {
                           UserMapper userMapper,
                           WordMetaMapper wordMetaMapper,
                           CloudLlmProperties cloudLlmProperties,
-                          LlmUsageTracker llmUsageTracker,
                           CloudLlmModelService cloudLlmModelService,
                           CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
         this.wordService = wordService;
         this.llmAsyncService = llmAsyncService;
         this.userMapper = userMapper;
         this.wordMetaMapper = wordMetaMapper;
-        this.cloudLlmProperties = cloudLlmProperties;
-        this.llmUsageTracker = llmUsageTracker;
-        this.cloudLlmModelService = cloudLlmModelService;
+        this.cloudLlmProperties = cloudLlmProperties;        this.cloudLlmModelService = cloudLlmModelService;
         this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
     }
 
@@ -130,9 +126,7 @@ public class WordController {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         llmAsyncService.markWordContentPending(req.getWordId(), wordType.code(), style, true);
-        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerate");
-        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel, userId);
+        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());        llmAsyncService.regenerateWordContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel, userId);
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", taskId);
         data.put("status", "pending");
@@ -160,9 +154,7 @@ public class WordController {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u4e91\u7aef API \u6682\u4e0d\u53ef\u7528\uff0c\u8bf7\u914d\u7f6e llm.cloud.api-key");
         }
         llmAsyncService.markWordExplainPending(req.getWordId(), wordType.code(), style, true);
-        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());
-        llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.regenerateExplain");
-        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel, userId);
+        wordService.invalidateWordDetailCache(userId, req.getWordId(), wordType.code());        llmAsyncService.regenerateWordExplainContent(req.getWordId(), wordType.code(), style, provider, localModel, cloudModel, userId);
         Map<String, Object> data = new HashMap<>();
         data.put("status", "pending");
         data.put("style", style);
@@ -218,9 +210,7 @@ public class WordController {
         for (Long pendingWordId : pendingWordIds) {
             llmAsyncService.markWordContentPending(pendingWordId, normalizedWordType.code(), style, false);
             llmAsyncService.markWordExplainPending(pendingWordId, normalizedWordType.code(), style, false);
-            wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());
-            llmUsageTracker.record(userId, provider, resolveUsedModel(provider, localModel, cloudModel), "word.manual.retryPending");
-            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel, userId);
+            wordService.invalidateWordDetailCache(userId, pendingWordId, normalizedWordType.code());            llmAsyncService.regenerateWordContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel, userId);
             llmAsyncService.regenerateWordExplainContent(pendingWordId, normalizedWordType.code(), style, provider, localModel, cloudModel, userId);
         }
 
@@ -304,15 +294,6 @@ public class WordController {
         return cloudLlmModelService.resolveSelectedModelForUser(user.getLlmCloudModel(), userId);
     }
 
-    private String resolveUsedModel(String provider, String localModel, String cloudModel) {
-        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
-            return cloudModel;
-        }
-        if (StringUtils.hasText(localModel)) {
-            return localModel.trim();
-        }
-        return null;
-    }
     private boolean isCloudUnavailable(Long userId, String provider, String cloudModel) {
         if (!LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
             return false;
@@ -320,6 +301,11 @@ public class WordController {
         return !cloudLlmRuntimeConfigResolver.isAvailable(userId, cloudModel);
     }
 }
+
+
+
+
+
 
 
 

@@ -232,15 +232,15 @@
       destroy-on-close
       :close-on-click-modal="false"
     >
-      <el-form label-position="top">
+      <el-form label-position="top" autocomplete="off">
         <el-form-item :label="TEXT.oldPassword">
-          <el-input v-model="pwdForm.oldPassword" type="password" show-password :placeholder="TEXT.oldPasswordPlaceholder" />
+          <el-input v-model="pwdForm.oldPassword" type="password" show-password autocomplete="current-password" name="profile-old-password" :placeholder="TEXT.oldPasswordPlaceholder" />
         </el-form-item>
         <el-form-item :label="TEXT.newPassword">
-          <el-input v-model="pwdForm.newPassword" type="password" show-password :placeholder="TEXT.newPasswordPlaceholder" />
+          <el-input v-model="pwdForm.newPassword" type="password" show-password autocomplete="new-password" name="profile-new-password" :placeholder="TEXT.newPasswordPlaceholder" />
         </el-form-item>
         <el-form-item :label="TEXT.confirmPassword">
-          <el-input v-model="pwdForm.confirmPassword" type="password" show-password :placeholder="TEXT.confirmPasswordPlaceholder" />
+          <el-input v-model="pwdForm.confirmPassword" type="password" show-password autocomplete="new-password" name="profile-confirm-password" :placeholder="TEXT.confirmPasswordPlaceholder" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -256,7 +256,7 @@
       destroy-on-close
       :close-on-click-modal="false"
     >
-      <el-form label-position="top">
+      <el-form label-position="top" autocomplete="off">
         <el-form-item :label="TEXT.cloudModelProvider">
           <el-select
             v-model="cloudModelForm.provider"
@@ -317,6 +317,8 @@
             type="password"
             show-password
             maxlength="512"
+            autocomplete="new-password"
+            name="cloud-model-api-key"
             :placeholder="TEXT.cloudModelApiKeyPlaceholder"
           />
           <div v-if="cloudModelForm.hasApiKey" class="cloud-key-mask">{{ TEXT.cloudModelApiKeyCurrent }}{{ cloudModelForm.apiKeyMask || TEXT.cloudModelApiKeyExists }}</div>
@@ -1278,6 +1280,8 @@ onUnmounted(() => {
   }
 }
 </style>
+
+
 
 
 

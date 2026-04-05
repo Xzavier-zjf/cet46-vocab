@@ -23,3 +23,18 @@ export const assistantChat = async (payload, options = {}) => {
     })
   }
 }
+
+export const assistantGetState = async (options = {}) => {
+  return request.get('/assistant/state', {
+    silentError: true,
+    ...options
+  })
+}
+
+export const assistantSyncState = async (payload, options = {}) => {
+  return request.put('/assistant/state', payload, {
+    silentError: true,
+    timeout: 30000,
+    ...options
+  })
+}

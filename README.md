@@ -108,4 +108,4 @@ mvn clean package -DskipTests
 
 ## License
 
-本项目仅用于学习与演示。
+本项目仅用于学习与演示，使用 MIT License。

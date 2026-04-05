@@ -4,7 +4,9 @@ import com.cet46.vocab.common.Result;
 import com.cet46.vocab.common.ResultCode;
 import com.cet46.vocab.config.CloudLlmProperties;
 import com.cet46.vocab.dto.request.AssistantChatRequest;
+import com.cet46.vocab.dto.request.AssistantStateSyncRequest;
 import com.cet46.vocab.dto.response.AssistantChatResponse;
+import com.cet46.vocab.dto.response.AssistantStateResponse;
 import com.cet46.vocab.entity.User;
 import com.cet46.vocab.llm.CloudLlmClient;
 import com.cet46.vocab.llm.LlmProvider;
@@ -14,13 +16,16 @@ import com.cet46.vocab.llm.CloudLlmRuntimeConfig;
 import com.cet46.vocab.llm.CloudLlmRuntimeConfigResolver;
 import com.cet46.vocab.llm.PromptTemplate;
 import com.cet46.vocab.mapper.UserMapper;
+import com.cet46.vocab.service.AssistantStateService;
 import com.cet46.vocab.service.CloudLlmModelService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -46,6 +51,7 @@ public class AssistantController {
     private final LlmUsageTracker llmUsageTracker;
     private final CloudLlmModelService cloudLlmModelService;
     private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
+    private final AssistantStateService assistantStateService;
 
     public AssistantController(UserMapper userMapper,
                                OllamaClient ollamaClient,
@@ -54,7 +60,8 @@ public class AssistantController {
                                ObjectMapper objectMapper,
                                LlmUsageTracker llmUsageTracker,
                                CloudLlmModelService cloudLlmModelService,
-                               CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
+                               CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver,
+                               AssistantStateService assistantStateService) {
         this.userMapper = userMapper;
         this.ollamaClient = ollamaClient;
         this.cloudLlmClient = cloudLlmClient;
@@ -63,6 +70,7 @@ public class AssistantController {
         this.llmUsageTracker = llmUsageTracker;
         this.cloudLlmModelService = cloudLlmModelService;
         this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
+        this.assistantStateService = assistantStateService;
     }
 
     @PostMapping("/chat")
@@ -94,9 +102,7 @@ public class AssistantController {
                 String localPrompt = buildAssistantPrompt(req, style, localModeConfig);
                 generated = generateCompleteAnswer(localPrompt, LlmProvider.LOCAL, localModeConfig, localModel, cloudModel, userId);
                 effectiveProvider = LlmProvider.LOCAL;
-            }
-            llmUsageTracker.record(userId, effectiveProvider, resolveUsedModel(effectiveProvider, localModel, cloudModel), "assistant.chat");
-            AssistantChatResponse data = AssistantChatResponse.builder()
+            }            AssistantChatResponse data = AssistantChatResponse.builder()
                     .answer(cleanAnswer(generated.content()))
                     .provider(effectiveProvider)
                     .style(style)
@@ -108,6 +114,25 @@ public class AssistantController {
         } catch (Exception ex) {
             return Result.fail(ResultCode.LLM_ERROR.getCode(), "\u5b66\u4e60\u52a9\u624b\u6682\u65f6\u4e0d\u53ef\u7528\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5");
         }
+    }
+
+    @GetMapping("/state")
+    public Result<AssistantStateResponse> getState(Authentication authentication) {
+        Long userId = getUserId(authentication);
+        if (userId == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        return Result.success(assistantStateService.loadState(userId));
+    }
+
+    @PutMapping("/state")
+    public Result<AssistantStateResponse> syncState(@RequestBody AssistantStateSyncRequest req,
+                                                    Authentication authentication) {
+        Long userId = getUserId(authentication);
+        if (userId == null) {
+            return Result.fail(ResultCode.UNAUTHORIZED);
+        }
+        return Result.success(assistantStateService.syncState(userId, req));
     }
 
     private GeneratedAnswer generateCompleteAnswer(String prompt, String provider, ModeConfig modeConfig, String localModel, String cloudModel, Long userId) {
@@ -138,6 +163,7 @@ public class AssistantController {
         if (LlmProvider.CLOUD.equals(provider)) {
             CloudLlmRuntimeConfig runtimeConfig = cloudLlmRuntimeConfigResolver.resolve(userId, cloudModel);
             CloudLlmClient.GenerationResult result = cloudLlmClient.generateWithMeta(prompt, runtimeConfig, modeConfig.cloudMaxTokens());
+            llmUsageTracker.record(userId, LlmProvider.CLOUD, runtimeConfig.model(), "assistant.chat", runtimeConfig.source());
             return new GenerationChunk(result.content(), result.truncated());
         }
         OllamaClient.GenerationResult result = ollamaClient.generatePlainTextWithMeta(prompt, modeConfig.localNumPredict(), localModel);
@@ -168,7 +194,7 @@ public class AssistantController {
 
     private boolean hasSuspiciousTail(String text) {
         String tail = text.length() > 20 ? text.substring(text.length() - 20) : text;
-        if (tail.endsWith("*") || tail.endsWith("**") || tail.endsWith("")) {
+        if (tail.endsWith("*") || tail.endsWith("**")) {
             return true;
         }
         Character last = previousMeaningfulChar(tail, tail.length() - 1);
@@ -360,16 +386,6 @@ public class AssistantController {
         return cloudLlmRuntimeConfigResolver.isAvailable(userId, cloudModel);
     }
 
-    private String resolveUsedModel(String provider, String localModel, String cloudModel) {
-        if (LlmProvider.CLOUD.equals(LlmProvider.normalize(provider))) {
-            return cloudModel;
-        }
-        if (StringUtils.hasText(localModel)) {
-            return localModel.trim();
-        }
-        return ollamaClient.getDefaultModel();
-    }
-
     private ModeConfig buildModeConfig(String provider, String localModel) {
         if (LlmProvider.CLOUD.equals(provider)) {
             return cloudModeConfig();
@@ -501,11 +517,11 @@ public class AssistantController {
             return "\u8fd9\u4e2a\u95ee\u9898\u6211\u6682\u65f6\u6ca1\u6709\u751f\u6210\u5230\u6709\u6548\u7b54\u6848\uff0c\u4f60\u53ef\u4ee5\u6362\u4e2a\u95ee\u6cd5\u518d\u8bd5\u4e00\u6b21\u3002";
         }
         String text = answer.trim();
-        if (text.startsWith("")) {
-            text = text.replace("markdown", "")
-                    .replace("md", "")
-                    .replace("json", "")
-                    .replace("", "")
+        if (text.startsWith("```")) {
+            text = text.replace("```markdown", "")
+                    .replace("```md", "")
+                    .replace("```json", "")
+                    .replace("```", "")
                     .trim();
         }
         String extracted = extractAnswerField(text);
@@ -630,6 +646,15 @@ public class AssistantController {
     private record GeneratedAnswer(String content, int continuationRounds) {
     }
 }
+
+
+
+
+
+
+
+
+
 
 
 

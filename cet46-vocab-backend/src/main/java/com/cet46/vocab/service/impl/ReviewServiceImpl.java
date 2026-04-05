@@ -136,6 +136,7 @@ public class ReviewServiceImpl implements ReviewService {
                 .reviewedAt(LocalDateTime.now())
                 .build();
         reviewLogMapper.insert(reviewLog);
+        upsertDailyPlanCacheAfterReview(userId);
 
         redisTemplate.delete(DASHBOARD_OVERVIEW_CACHE_PREFIX + userId);
 
@@ -234,6 +235,52 @@ public class ReviewServiceImpl implements ReviewService {
         } catch (DataAccessException ex) {
             log.warn("failed to query user style for userId={}", userId, ex);
             return "story";
+        }
+    }
+
+    private void upsertDailyPlanCacheAfterReview(Long userId) {
+        try {
+            LocalDate today = LocalDate.now();
+            Integer dueCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM user_word_progress WHERE user_id = ? AND next_review_date <= ?",
+                    Integer.class,
+                    userId,
+                    today
+            );
+            Integer reviewedCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(1) FROM review_log WHERE user_id = ? AND DATE(reviewed_at) = ?",
+                    Integer.class,
+                    userId,
+                    today
+            );
+            Integer target = jdbcTemplate.queryForObject(
+                    "SELECT daily_target FROM user WHERE id = ? LIMIT 1",
+                    Integer.class,
+                    userId
+            );
+            int due = dueCount == null ? 0 : Math.max(dueCount, 0);
+            int reviewed = reviewedCount == null ? 0 : Math.max(reviewedCount, 0);
+            int dailyTarget = (target == null || target <= 0) ? 20 : target;
+
+            jdbcTemplate.update(
+                    "INSERT INTO daily_plan_cache (user_id, plan_date, due_count, reviewed_count, daily_target, completion_rate, generated_at, last_synced_at) " +
+                            "VALUES (?, ?, ?, ?, ?, CASE WHEN ? <= 0 THEN 0 ELSE LEAST(100, ROUND(? * 100.0 / ?, 2)) END, NOW(), NOW()) " +
+                            "ON DUPLICATE KEY UPDATE " +
+                            "reviewed_count = VALUES(reviewed_count), " +
+                            "daily_target = VALUES(daily_target), " +
+                            "completion_rate = CASE WHEN due_count <= 0 THEN 0 ELSE LEAST(100, ROUND(VALUES(reviewed_count) * 100.0 / due_count, 2)) END, " +
+                            "last_synced_at = NOW()",
+                    userId,
+                    today,
+                    due,
+                    reviewed,
+                    dailyTarget,
+                    due,
+                    reviewed,
+                    due
+            );
+        } catch (DataAccessException ex) {
+            log.warn("upsert daily plan cache failed for user {}", userId, ex);
         }
     }
 

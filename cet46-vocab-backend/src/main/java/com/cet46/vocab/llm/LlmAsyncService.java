@@ -47,6 +47,8 @@ public class LlmAsyncService {
     private final ObjectMapper objectMapper;
     private final Executor llmTaskExecutor;
     private final CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver;
+    
+    private final LlmUsageTracker llmUsageTracker;
 
     public LlmAsyncService(LlmCacheService llmCacheService,
                            OllamaClient ollamaClient,
@@ -56,7 +58,8 @@ public class LlmAsyncService {
                            JdbcTemplate jdbcTemplate,
                            ObjectMapper objectMapper,
                            @Qualifier("llmTaskExecutor") Executor llmTaskExecutor,
-                           CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver) {
+                           CloudLlmRuntimeConfigResolver cloudLlmRuntimeConfigResolver,
+                           LlmUsageTracker llmUsageTracker) {
         this.llmCacheService = llmCacheService;
         this.ollamaClient = ollamaClient;
         this.cloudLlmClient = cloudLlmClient;
@@ -66,6 +69,7 @@ public class LlmAsyncService {
         this.objectMapper = objectMapper;
         this.llmTaskExecutor = llmTaskExecutor;
         this.cloudLlmRuntimeConfigResolver = cloudLlmRuntimeConfigResolver;
+        this.llmUsageTracker = llmUsageTracker;
     }
 
     @Async("llmTaskExecutor")
@@ -573,7 +577,9 @@ public class LlmAsyncService {
         }
         if (LlmProvider.CLOUD.equals(provider)) {
             CloudLlmRuntimeConfig runtimeConfig = cloudLlmRuntimeConfigResolver.resolve(userId, cloudModel);
-            return cloudLlmClient.generate(prompt, runtimeConfig, null);
+            String content = cloudLlmClient.generate(prompt, runtimeConfig, null);
+            llmUsageTracker.record(userId, LlmProvider.CLOUD, runtimeConfig.model(), "word.async.generate", runtimeConfig.source());
+            return content;
         }
         return ollamaClient.generate(prompt, localModel);
     }
@@ -1200,6 +1206,12 @@ public class LlmAsyncService {
     private record GenerationAttempt(String content, boolean timeoutOccurred) {
     }
 }
+
+
+
+
+
+
 
 
 

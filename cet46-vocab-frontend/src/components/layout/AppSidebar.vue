@@ -39,6 +39,7 @@
         <template #dropdown>
           <el-dropdown-menu>
             <el-dropdown-item command="profile">个人资料</el-dropdown-item>
+            <el-dropdown-item command="model-usage">模型用量</el-dropdown-item>
             <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -58,6 +59,7 @@ import {
   Refresh,
   Edit,
   TrendCharts,
+  Histogram,
   User,
   Upload,
   UserFilled,
@@ -87,7 +89,8 @@ const menuItems = computed(() => {
       { label: '词库导入', path: '/admin', icon: Upload, exact: true },
       { label: '用户管理', path: '/admin/users', icon: UserFilled, exact: false },
       { label: '权限管理', path: '/admin/permissions', icon: Lock, exact: false },
-      { label: '我的资料', path: '/profile', icon: User, exact: false }
+      { label: '我的资料', path: '/profile', icon: User, exact: false },
+      { label: '模型用量', path: '/model-usage', icon: Histogram, exact: false }
     ]
   }
 
@@ -99,7 +102,8 @@ const menuItems = computed(() => {
     { label: '模拟测验', path: '/quiz', icon: Edit },
     { label: '学习助手', path: '/assistant', icon: ChatDotRound },
     { label: '学习统计', path: '/stats', icon: TrendCharts },
-    { label: '我的资料', path: '/profile', icon: User }
+    { label: '我的资料', path: '/profile', icon: User },
+    { label: '模型用量', path: '/model-usage', icon: Histogram }
   ]
 })
 
@@ -127,6 +131,10 @@ const resolveMenuPath = (path) => {
 const onCommand = async (command) => {
   if (command === 'profile') {
     router.push('/profile')
+    return
+  }
+  if (command === 'model-usage') {
+    router.push('/model-usage')
     return
   }
   if (command !== 'logout') return
