@@ -1,0 +1,121 @@
+{
+  "version": 1,
+  "title": "图4-2 系统功能模块图",
+  "type": "academic-diagram",
+  "source": "edited",
+  "profile": "academic-paper",
+  "theme": "academic",
+  "layout": "horizontal",
+  "counts": {
+    "nodes": 9,
+    "edges": 8,
+    "modules": 0
+  },
+  "nodes": [
+    {
+      "id": "root",
+      "label": "四六级高频词记忆系统",
+      "type": "terminal",
+      "size": "xl"
+    },
+    {
+      "id": "user",
+      "label": "用户权限\n注册 / 登录 / 资料",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "words",
+      "label": "词库词条\n浏览 / 详情 / 加入学习",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "llm",
+      "label": "AI学习内容\n例句 / 助记 / 解释",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "review",
+      "label": "复习调度\nSM-2 / 待复习 / 日志",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "quiz",
+      "label": "模拟测验\n选择 / 填空 / 历史",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "dashboard",
+      "label": "学习统计\n看板 / 热力图 / 周报",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "assistant",
+      "label": "学习助手\n问答 / 同步 / 续写",
+      "type": "service",
+      "size": "large"
+    },
+    {
+      "id": "admin",
+      "label": "后台管理\n导入 / 模型 / 权限",
+      "type": "service",
+      "size": "large"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "root",
+      "to": "user",
+      "type": "primary"
+    },
+    {
+      "id": "edge-2",
+      "from": "root",
+      "to": "words",
+      "type": "primary"
+    },
+    {
+      "id": "edge-3",
+      "from": "root",
+      "to": "llm",
+      "type": "primary"
+    },
+    {
+      "id": "edge-4",
+      "from": "root",
+      "to": "review",
+      "type": "primary"
+    },
+    {
+      "id": "edge-5",
+      "from": "root",
+      "to": "quiz",
+      "type": "primary"
+    },
+    {
+      "id": "edge-6",
+      "from": "root",
+      "to": "dashboard",
+      "type": "primary"
+    },
+    {
+      "id": "edge-7",
+      "from": "root",
+      "to": "assistant",
+      "type": "primary"
+    },
+    {
+      "id": "edge-8",
+      "from": "root",
+      "to": "admin",
+      "type": "primary"
+    }
+  ],
+  "modules": []
+}

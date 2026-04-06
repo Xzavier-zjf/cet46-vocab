@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "title": "图6-3 系统部署流程图",
+  "type": "academic-diagram",
+  "source": "edited",
+  "profile": "academic-paper",
+  "theme": "academic",
+  "layout": "horizontal",
+  "counts": {
+    "nodes": 10,
+    "edges": 10,
+    "modules": 0
+  },
+  "nodes": [
+    {
+      "id": "start",
+      "label": "开始部署",
+      "type": "terminal",
+      "size": "medium"
+    },
+    {
+      "id": "pull",
+      "label": "拉取代码\ngit pull",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "fe",
+      "label": "前端构建\nnpm run build",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "be",
+      "label": "后端打包\nmvn package -DskipTests",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "stop",
+      "label": "停止旧进程",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "startjar",
+      "label": "启动新Jar",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "nginx",
+      "label": "重载Nginx",
+      "type": "process",
+      "size": "large"
+    },
+    {
+      "id": "verify",
+      "label": "访问页面与API",
+      "type": "decision",
+      "size": "large"
+    },
+    {
+      "id": "finish",
+      "label": "部署完成",
+      "type": "terminal",
+      "size": "medium"
+    },
+    {
+      "id": "rollback",
+      "label": "回查日志并重试",
+      "type": "process",
+      "size": "large"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "start",
+      "to": "pull",
+      "type": "primary",
+      "label": "1"
+    },
+    {
+      "id": "edge-2",
+      "from": "pull",
+      "to": "fe",
+      "type": "primary",
+      "label": "2"
+    },
+    {
+      "id": "edge-3",
+      "from": "fe",
+      "to": "be",
+      "type": "primary",
+      "label": "3"
+    },
+    {
+      "id": "edge-4",
+      "from": "be",
+      "to": "stop",
+      "type": "primary",
+      "label": "4"
+    },
+    {
+      "id": "edge-5",
+      "from": "stop",
+      "to": "startjar",
+      "type": "primary",
+      "label": "5"
+    },
+    {
+      "id": "edge-6",
+      "from": "startjar",
+      "to": "nginx",
+      "type": "primary",
+      "label": "6"
+    },
+    {
+      "id": "edge-7",
+      "from": "nginx",
+      "to": "verify",
+      "type": "primary",
+      "label": "7"
+    },
+    {
+      "id": "edge-8",
+      "from": "verify",
+      "to": "finish",
+      "type": "primary",
+      "label": "成功"
+    },
+    {
+      "id": "edge-9",
+      "from": "verify",
+      "to": "rollback",
+      "type": "primary",
+      "label": "失败"
+    },
+    {
+      "id": "edge-10",
+      "from": "rollback",
+      "to": "be",
+      "type": "primary",
+      "label": "重试"
+    }
+  ],
+  "modules": []
+}

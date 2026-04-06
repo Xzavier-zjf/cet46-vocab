@@ -21,3 +21,7 @@ cet46-vocab-frontend/dist/
 .DS_Store
 Thumbs.db
 *.log
+
+# Codex local tooling
+.codex-tools/
+

@@ -1,0 +1,121 @@
+meta:
+  profile: academic-paper
+  source: edited
+  theme: academic
+  layout: horizontal
+  canvas: 1460x980
+  routing: orthogonal
+  title: 图4-2 系统功能模块图
+  description: 集成大模型解释能力的四六级高频词记忆系统功能模块划分
+  legend: 功能模块以系统主功能为主，不再额外绘制跨模块辅助依赖线。
+nodes:
+  - id: root
+    label: 四六级高频词记忆系统
+    type: terminal
+    size: xl
+    position:
+      x: 560
+      'y': 80
+  - id: user
+    label: |-
+      用户权限
+      注册 / 登录 / 资料
+    type: service
+    size: large
+    position:
+      x: 120
+      'y': 280
+  - id: words
+    label: |-
+      词库词条
+      浏览 / 详情 / 加入学习
+    type: service
+    size: large
+    position:
+      x: 420
+      'y': 280
+  - id: llm
+    label: |-
+      AI学习内容
+      例句 / 助记 / 解释
+    type: service
+    size: large
+    position:
+      x: 720
+      'y': 280
+  - id: review
+    label: |-
+      复习调度
+      SM-2 / 待复习 / 日志
+    type: service
+    size: large
+    position:
+      x: 1020
+      'y': 280
+  - id: quiz
+    label: |-
+      模拟测验
+      选择 / 填空 / 历史
+    type: service
+    size: large
+    position:
+      x: 120
+      'y': 600
+  - id: dashboard
+    label: |-
+      学习统计
+      看板 / 热力图 / 周报
+    type: service
+    size: large
+    position:
+      x: 420
+      'y': 600
+  - id: assistant
+    label: |-
+      学习助手
+      问答 / 同步 / 续写
+    type: service
+    size: large
+    position:
+      x: 720
+      'y': 600
+  - id: admin
+    label: |-
+      后台管理
+      导入 / 模型 / 权限
+    type: service
+    size: large
+    position:
+      x: 1020
+      'y': 600
+edges:
+  - from: root
+    to: user
+    type: primary
+  - from: root
+    to: words
+    type: primary
+  - from: root
+    to: llm
+    type: primary
+  - from: root
+    to: review
+    type: primary
+  - from: root
+    to: quiz
+    type: primary
+  - from: root
+    to: dashboard
+    type: primary
+  - from: root
+    to: assistant
+    type: primary
+  - from: root
+    to: admin
+    type: primary
+    waypoints:
+      - x: 720
+        'y': 200
+      - x: 1100
+        'y': 200
+modules: []

@@ -227,11 +227,12 @@ class CloudLlmModelServiceImplBoundaryTest {
 
         when(cloudLlmModelMapper.selectById(10L)).thenReturn(existing, after);
         when(cloudLlmModelMapper.updateById(any(CloudLlmModel.class))).thenReturn(1);
+        when(cloudLlmProperties.isSupportedProvider("bailian")).thenReturn(true);
 
         service.updatePrivate(9L, 10L, "bailian", "qwen3.5-flash", "old", null, null, null, null, true, null);
 
         verify(cloudLlmProviderCredentialMapper).delete(any());
-        verify(cloudLlmProviderCredentialMapper, never()).insert(any());
+        verify(cloudLlmProviderCredentialMapper, never()).insert(any(CloudLlmProviderCredential.class));
     }
 }
 

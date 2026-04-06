@@ -1,0 +1,133 @@
+meta:
+  profile: academic-paper
+  source: edited
+  theme: academic
+  layout: horizontal
+  canvas: 1720x520
+  routing: orthogonal
+  title: 图6-3 系统部署流程图
+  description: 基于 deploy.sh 与 nginx.conf 的项目部署步骤流程。
+  legend: 椭圆表示开始或结束，矩形表示部署动作，菱形表示结果判断。
+nodes:
+  - id: start
+    label: 开始部署
+    type: terminal
+    size: medium
+    position:
+      x: 60
+      'y': 170
+  - id: pull
+    label: |-
+      拉取代码
+      git pull
+    type: process
+    size: large
+    position:
+      x: 220
+      'y': 160
+  - id: fe
+    label: |-
+      前端构建
+      npm run build
+    type: process
+    size: large
+    position:
+      x: 450
+      'y': 160
+  - id: be
+    label: |-
+      后端打包
+      mvn package -DskipTests
+    type: process
+    size: large
+    position:
+      x: 680
+      'y': 160
+  - id: stop
+    label: 停止旧进程
+    type: process
+    size: large
+    position:
+      x: 910
+      'y': 160
+  - id: startjar
+    label: 启动新Jar
+    type: process
+    size: large
+    position:
+      x: 1140
+      'y': 160
+  - id: nginx
+    label: 重载Nginx
+    type: process
+    size: large
+    position:
+      x: 1370
+      'y': 160
+  - id: verify
+    label: 访问页面与API
+    type: decision
+    size: large
+    position:
+      x: 1530
+      'y': 160
+  - id: finish
+    label: 部署完成
+    type: terminal
+    size: medium
+    position:
+      x: 1530
+      'y': 360
+  - id: rollback
+    label: 回查日志并重试
+    type: process
+    size: large
+    position:
+      x: 1140
+      'y': 360
+edges:
+  - from: start
+    to: pull
+    label: '1'
+    waypoints:
+      - x: 180
+        'y': 190
+  - from: pull
+    to: fe
+    label: '2'
+  - from: fe
+    to: be
+    label: '3'
+  - from: be
+    to: stop
+    label: '4'
+  - from: stop
+    to: startjar
+    label: '5'
+  - from: startjar
+    to: nginx
+    label: '6'
+  - from: nginx
+    to: verify
+    label: '7'
+    waypoints:
+      - x: 1490
+        'y': 190
+  - from: verify
+    to: finish
+    label: 成功
+  - from: verify
+    to: rollback
+    label: 失败
+    waypoints:
+      - x: 1530
+        'y': 280
+  - from: rollback
+    to: be
+    label: 重试
+    waypoints:
+      - x: 910
+        'y': 360
+      - x: 910
+        'y': 240
+modules: []

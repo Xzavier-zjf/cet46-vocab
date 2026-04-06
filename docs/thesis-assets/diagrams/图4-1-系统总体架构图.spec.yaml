@@ -1,0 +1,168 @@
+meta:
+  profile: academic-paper
+  source: edited
+  theme: academic
+  layout: horizontal
+  canvas: 1680x920
+  routing: orthogonal
+  title: 图4-1 系统总体架构图
+  description: 集成大模型解释能力的四六级高频词记忆系统总体架构
+  legend: 实线表示主业务链路，虚线表示缓存、持久化与模型调用链路。
+modules:
+  - id: client
+    label: 用户交互层
+  - id: backend
+    label: 后端服务层
+  - id: data
+    label: 数据与缓存层
+  - id: model
+    label: 模型适配层
+nodes:
+  - id: web
+    label: |-
+      Web前端
+      Vue3 / Vite
+    type: service
+    module: client
+    size: large
+    position:
+      x: 120
+      'y': 150
+  - id: views
+    label: |-
+      学习页面群
+      词库 / 复习 / 测验 / 看板
+    type: process
+    module: client
+    size: xl
+    position:
+      x: 120
+      'y': 500
+  - id: auth
+    label: |-
+      认证权限
+      Security / JWT
+    type: service
+    module: backend
+    size: large
+    position:
+      x: 500
+      'y': 140
+  - id: business
+    label: |-
+      核心业务
+      词库 / 复习 / 测验 / 看板
+    type: service
+    module: backend
+    size: xl
+    position:
+      x: 500
+      'y': 420
+  - id: assistant
+    label: |-
+      学习助手
+      对话 / 状态同步
+    type: service
+    module: backend
+    size: large
+    position:
+      x: 500
+      'y': 700
+  - id: mysql
+    label: |-
+      MySQL
+      词表 / 用户 / 进度
+    type: database
+    module: data
+    size: large
+    position:
+      x: 920
+      'y': 250
+  - id: redis
+    label: |-
+      Redis
+      详情缓存 / 看板缓存
+    type: database
+    module: data
+    size: medium
+    position:
+      x: 920
+      'y': 560
+  - id: parser
+    label: |-
+      模型适配层
+      Prompt / 解析 / 用量
+    type: process
+    module: model
+    size: xl
+    position:
+      x: 1300
+      'y': 560
+  - id: local
+    label: |-
+      本地模型
+      Ollama
+    type: cloud
+    module: model
+    size: medium
+    position:
+      x: 1300
+      'y': 180
+  - id: cloud
+    label: |-
+      云端模型
+      OpenAI兼容
+    type: cloud
+    module: model
+    size: medium
+    position:
+      x: 1300
+      'y': 360
+edges:
+  - from: web
+    to: views
+    type: primary
+  - from: views
+    to: auth
+    type: primary
+    label: 登录/鉴权
+  - from: views
+    to: business
+    type: primary
+    label: 学习/复习/测验
+  - from: views
+    to: assistant
+    type: primary
+    label: 学习助手对话
+  - from: business
+    to: mysql
+    type: data
+    label: 持久化读写
+  - from: business
+    to: redis
+    type: data
+    label: 缓存读取
+  - from: business
+    to: parser
+    type: optional
+    label: AI内容生成
+  - from: assistant
+    to: parser
+    type: primary
+    label: 对话生成
+  - from: parser
+    to: local
+    type: data
+    label: 本地推理
+  - from: parser
+    to: cloud
+    type: data
+    label: 云端调用
+  - from: parser
+    to: mysql
+    type: data
+    label: 结果回填
+  - from: parser
+    to: redis
+    type: data
+    label: 缓存更新

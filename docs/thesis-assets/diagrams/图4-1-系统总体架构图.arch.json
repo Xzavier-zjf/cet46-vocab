@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "title": "图4-1 系统总体架构图",
+  "type": "academic-diagram",
+  "source": "edited",
+  "profile": "academic-paper",
+  "theme": "academic",
+  "layout": "horizontal",
+  "counts": {
+    "nodes": 10,
+    "edges": 12,
+    "modules": 4
+  },
+  "nodes": [
+    {
+      "id": "web",
+      "label": "Web前端\nVue3 / Vite",
+      "type": "service",
+      "module": "client",
+      "size": "large"
+    },
+    {
+      "id": "views",
+      "label": "学习页面群\n词库 / 复习 / 测验 / 看板",
+      "type": "process",
+      "module": "client",
+      "size": "xl"
+    },
+    {
+      "id": "auth",
+      "label": "认证权限\nSecurity / JWT",
+      "type": "service",
+      "module": "backend",
+      "size": "large"
+    },
+    {
+      "id": "business",
+      "label": "核心业务\n词库 / 复习 / 测验 / 看板",
+      "type": "service",
+      "module": "backend",
+      "size": "xl"
+    },
+    {
+      "id": "assistant",
+      "label": "学习助手\n对话 / 状态同步",
+      "type": "service",
+      "module": "backend",
+      "size": "large"
+    },
+    {
+      "id": "mysql",
+      "label": "MySQL\n词表 / 用户 / 进度",
+      "type": "database",
+      "module": "data",
+      "size": "large"
+    },
+    {
+      "id": "redis",
+      "label": "Redis\n详情缓存 / 看板缓存",
+      "type": "database",
+      "module": "data",
+      "size": "medium"
+    },
+    {
+      "id": "parser",
+      "label": "模型适配层\nPrompt / 解析 / 用量",
+      "type": "process",
+      "module": "model",
+      "size": "xl"
+    },
+    {
+      "id": "local",
+      "label": "本地模型\nOllama",
+      "type": "cloud",
+      "module": "model",
+      "size": "medium"
+    },
+    {
+      "id": "cloud",
+      "label": "云端模型\nOpenAI兼容",
+      "type": "cloud",
+      "module": "model",
+      "size": "medium"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "web",
+      "to": "views",
+      "type": "primary"
+    },
+    {
+      "id": "edge-2",
+      "from": "views",
+      "to": "auth",
+      "type": "primary",
+      "label": "登录/鉴权"
+    },
+    {
+      "id": "edge-3",
+      "from": "views",
+      "to": "business",
+      "type": "primary",
+      "label": "学习/复习/测验"
+    },
+    {
+      "id": "edge-4",
+      "from": "views",
+      "to": "assistant",
+      "type": "primary",
+      "label": "学习助手对话"
+    },
+    {
+      "id": "edge-5",
+      "from": "business",
+      "to": "mysql",
+      "type": "data",
+      "label": "持久化读写"
+    },
+    {
+      "id": "edge-6",
+      "from": "business",
+      "to": "redis",
+      "type": "data",
+      "label": "缓存读取"
+    },
+    {
+      "id": "edge-7",
+      "from": "business",
+      "to": "parser",
+      "type": "optional",
+      "label": "AI内容生成"
+    },
+    {
+      "id": "edge-8",
+      "from": "assistant",
+      "to": "parser",
+      "type": "primary",
+      "label": "对话生成"
+    },
+    {
+      "id": "edge-9",
+      "from": "parser",
+      "to": "local",
+      "type": "data",
+      "label": "本地推理"
+    },
+    {
+      "id": "edge-10",
+      "from": "parser",
+      "to": "cloud",
+      "type": "data",
+      "label": "云端调用"
+    },
+    {
+      "id": "edge-11",
+      "from": "parser",
+      "to": "mysql",
+      "type": "data",
+      "label": "结果回填"
+    },
+    {
+      "id": "edge-12",
+      "from": "parser",
+      "to": "redis",
+      "type": "data",
+      "label": "缓存更新"
+    }
+  ],
+  "modules": [
+    {
+      "id": "client",
+      "label": "用户交互层"
+    },
+    {
+      "id": "backend",
+      "label": "后端服务层"
+    },
+    {
+      "id": "data",
+      "label": "数据与缓存层"
+    },
+    {
+      "id": "model",
+      "label": "模型适配层"
+    }
+  ]
+}

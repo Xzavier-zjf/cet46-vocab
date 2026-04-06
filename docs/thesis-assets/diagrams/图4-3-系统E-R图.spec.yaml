@@ -1,0 +1,211 @@
+meta:
+  profile: academic-paper
+  source: edited
+  theme: academic
+  layout: horizontal
+  canvas: 1820x1040
+  routing: orthogonal
+  title: 图4-3 系统 E-R 图
+  description: 系统核心数据实体及其关系
+  legend: 方框表示实体，连线表示主要关联关系。
+nodes:
+  - id: user
+    label: |-
+      user
+      PK id
+      username
+      role
+      llm_style
+      target
+    type: database
+    size: xl
+    position:
+      x: 140
+      'y': 360
+  - id: cet4
+    label: |-
+      cet4zx
+      PK id
+      english / phonetic
+      chinese
+    type: database
+    size: large
+    position:
+      x: 140
+      'y': 120
+  - id: cet6
+    label: |-
+      cet6zx
+      PK id
+      english / phonetic
+      chinese
+    type: database
+    size: large
+    position:
+      x: 1480
+      'y': 120
+  - id: meta
+    label: |-
+      word_meta
+      PK id
+      word_id
+      word_type
+      style / status
+      ai_content
+    type: database
+    size: xl
+    position:
+      x: 820
+      'y': 120
+  - id: progress
+    label: |-
+      user_word_progress
+      PK id
+      user_id
+      word_id
+      easiness
+      interval / repeat
+      next_review
+    type: database
+    size: xl
+    position:
+      x: 820
+      'y': 360
+  - id: review
+    label: |-
+      review_log
+      PK id
+      user_id
+      word_id
+      score
+      cost_ms / reviewed_at
+    type: database
+    size: large
+    position:
+      x: 820
+      'y': 620
+  - id: quiz
+    label: |-
+      quiz_session_record
+      PK id
+      quiz_id
+      user_id
+      quiz_type / score
+      details_json
+    type: database
+    size: xl
+    position:
+      x: 1480
+      'y': 360
+  - id: batch
+    label: |-
+      word_import_batch
+      PK id
+      batch_id
+      word_type
+      file_name
+      inserted / updated
+      created_by
+    type: database
+    size: large
+    position:
+      x: 140
+      'y': 620
+  - id: batchitem
+    label: |-
+      word_import_batch_item
+      PK id
+      batch_id
+      word_id
+      action_type
+      old_val / new_val
+    type: database
+    size: large
+    position:
+      x: 1480
+      'y': 620
+edges:
+  - from: user
+    to: progress
+    type: primary
+    label: 1:N
+  - from: user
+    to: review
+    type: primary
+    label: 1:N
+    waypoints:
+      - x: 510
+        'y': 670
+  - from: user
+    to: quiz
+    type: primary
+    label: 1:N
+    waypoints:
+      - x: 1260
+        'y': 410
+  - from: user
+    to: batch
+    type: optional
+    label: 1:N
+  - from: cet4
+    to: meta
+    type: primary
+    label: 1:N cet4
+  - from: cet6
+    to: meta
+    type: primary
+    label: 1:N cet6
+  - from: cet4
+    to: progress
+    type: optional
+    label: 1:N
+    waypoints:
+      - x: 500
+        'y': 200
+      - x: 500
+        'y': 390
+  - from: cet6
+    to: progress
+    type: optional
+    label: 1:N
+    waypoints:
+      - x: 1360
+        'y': 200
+      - x: 1360
+        'y': 390
+  - from: cet4
+    to: review
+    type: optional
+    label: 1:N
+    waypoints:
+      - x: 450
+        'y': 210
+      - x: 450
+        'y': 660
+  - from: cet6
+    to: review
+    type: optional
+    label: 1:N
+    waypoints:
+      - x: 1410
+        'y': 210
+      - x: 1410
+        'y': 660
+  - from: batch
+    to: batchitem
+    type: primary
+    label: 1:N
+  - from: batchitem
+    to: cet4
+    type: optional
+    label: 关联
+    waypoints:
+      - x: 1700
+        'y': 690
+      - x: 1700
+        'y': 190
+  - from: batchitem
+    to: cet6
+    type: optional
+    label: 关联
+modules: []

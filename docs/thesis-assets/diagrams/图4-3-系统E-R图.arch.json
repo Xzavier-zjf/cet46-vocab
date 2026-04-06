@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "title": "图4-3 系统 E-R 图",
+  "type": "academic-diagram",
+  "source": "edited",
+  "profile": "academic-paper",
+  "theme": "academic",
+  "layout": "horizontal",
+  "counts": {
+    "nodes": 9,
+    "edges": 13,
+    "modules": 0
+  },
+  "nodes": [
+    {
+      "id": "user",
+      "label": "user\nPK id\nusername\nrole\nllm_style\ntarget",
+      "type": "database",
+      "size": "xl"
+    },
+    {
+      "id": "cet4",
+      "label": "cet4zx\nPK id\nenglish / phonetic\nchinese",
+      "type": "database",
+      "size": "large"
+    },
+    {
+      "id": "cet6",
+      "label": "cet6zx\nPK id\nenglish / phonetic\nchinese",
+      "type": "database",
+      "size": "large"
+    },
+    {
+      "id": "meta",
+      "label": "word_meta\nPK id\nword_id\nword_type\nstyle / status\nai_content",
+      "type": "database",
+      "size": "xl"
+    },
+    {
+      "id": "progress",
+      "label": "user_word_progress\nPK id\nuser_id\nword_id\neasiness\ninterval / repeat\nnext_review",
+      "type": "database",
+      "size": "xl"
+    },
+    {
+      "id": "review",
+      "label": "review_log\nPK id\nuser_id\nword_id\nscore\ncost_ms / reviewed_at",
+      "type": "database",
+      "size": "large"
+    },
+    {
+      "id": "quiz",
+      "label": "quiz_session_record\nPK id\nquiz_id\nuser_id\nquiz_type / score\ndetails_json",
+      "type": "database",
+      "size": "xl"
+    },
+    {
+      "id": "batch",
+      "label": "word_import_batch\nPK id\nbatch_id\nword_type\nfile_name\ninserted / updated\ncreated_by",
+      "type": "database",
+      "size": "large"
+    },
+    {
+      "id": "batchitem",
+      "label": "word_import_batch_item\nPK id\nbatch_id\nword_id\naction_type\nold_val / new_val",
+      "type": "database",
+      "size": "large"
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-1",
+      "from": "user",
+      "to": "progress",
+      "type": "primary",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-2",
+      "from": "user",
+      "to": "review",
+      "type": "primary",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-3",
+      "from": "user",
+      "to": "quiz",
+      "type": "primary",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-4",
+      "from": "user",
+      "to": "batch",
+      "type": "optional",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-5",
+      "from": "cet4",
+      "to": "meta",
+      "type": "primary",
+      "label": "1:N cet4"
+    },
+    {
+      "id": "edge-6",
+      "from": "cet6",
+      "to": "meta",
+      "type": "primary",
+      "label": "1:N cet6"
+    },
+    {
+      "id": "edge-7",
+      "from": "cet4",
+      "to": "progress",
+      "type": "optional",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-8",
+      "from": "cet6",
+      "to": "progress",
+      "type": "optional",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-9",
+      "from": "cet4",
+      "to": "review",
+      "type": "optional",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-10",
+      "from": "cet6",
+      "to": "review",
+      "type": "optional",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-11",
+      "from": "batch",
+      "to": "batchitem",
+      "type": "primary",
+      "label": "1:N"
+    },
+    {
+      "id": "edge-12",
+      "from": "batchitem",
+      "to": "cet4",
+      "type": "optional",
+      "label": "关联"
+    },
+    {
+      "id": "edge-13",
+      "from": "batchitem",
+      "to": "cet6",
+      "type": "optional",
+      "label": "关联"
+    }
+  ],
+  "modules": []
+}
