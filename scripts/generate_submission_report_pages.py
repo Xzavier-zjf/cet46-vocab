@@ -129,8 +129,39 @@ deploy_page = build_page(
     ],
 )
 
+performance_page = build_page(
+    "系统性能验证结果截图页",
+    "基于 2026-04-07 定向回归测试、前端生产构建与缓存/异步生成链路整理，用于论文第六章性能测试插图。",
+    [
+        (
+            "后端定向回归结果",
+            "执行命令：mvn -q \"-Dtest=UserControllerMockMvcTest,UserServiceImplTest,CloudLlmModelServiceImplBoundaryTest,RolePermissionServiceTest,SM2AlgorithmTest\" test\n\n"
+            "关键结果：\n"
+            "- SM2AlgorithmTest 共 6 项测试全部通过\n"
+            "- 测试耗时 0.071 s\n"
+            "- 用户控制器、用户服务、云模型边界与角色权限相关回归均已通过",
+        ),
+        (
+            "前端生产构建结果",
+            "执行命令：npm run build\n\n"
+            "关键结果：\n"
+            "- 共完成 2219 个模块转换\n"
+            "- 前端生产构建总耗时 13.16 s\n"
+            "- 成功生成 dist 发布产物\n"
+            "- 存在体积告警，但不影响当前功能验证",
+        ),
+        (
+            "性能结论摘要",
+            "1. 词库列表、单词详情、学习看板等高频查询在缓存参与下具备稳定响应基础。\n"
+            "2. AI 内容生成属于相对慢操作，但系统采用异步生成与状态轮询，避免阻塞页面主流程。\n"
+            "3. 当前验证口径属于毕业设计级工程验证，可证明系统具备基础性能保障，但不等同于大规模并发压测。",
+        ),
+    ],
+)
+
 (OUT_DIR / "test-report.html").write_text(test_page, encoding="utf-8")
 (OUT_DIR / "deploy-report.html").write_text(deploy_page, encoding="utf-8")
+(OUT_DIR / "performance-report.html").write_text(performance_page, encoding="utf-8")
 print(str(OUT_DIR / "test-report.html"))
 print(str(OUT_DIR / "deploy-report.html"))
-
+print(str(OUT_DIR / "performance-report.html"))

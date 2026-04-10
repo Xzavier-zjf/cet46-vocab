@@ -26,6 +26,7 @@ async function main() {
   try {
     await capture(page, 'test-report.html', 'system-test-report.png');
     await capture(page, 'deploy-report.html', 'system-deploy-report.png');
+    await capture(page, 'performance-report.html', 'system-performance-report.png');
   } finally {
     await browser.close();
   }
